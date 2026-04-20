@@ -56,4 +56,3 @@ databases:
 redis:
   - name: reputation-redis
     plan: free
-    maxmemoryPolicy: noeviction
