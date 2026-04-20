@@ -8,6 +8,7 @@ services:
     rootDir: apps/api
     buildCommand: |
       pip install -r requirements.txt
+      playwright install chromium
     startCommand: |
       uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
@@ -19,7 +20,9 @@ services:
           name: reputation-db
           property: connectionString
       - key: CELERY_BROKER_URL
-        sync: false
+        fromDatabase:
+          name: reputation-db
+          property: connectionString
       - key: CELERY_RESULT_BACKEND
         fromDatabase:
           name: reputation-db
@@ -27,11 +30,11 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: ANTHROPIC_ENABLED
-        value: true
+        value: "true"
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: OPENAI_ENABLED
-        value: false
+        value: "false"
       - key: OPENAI_API_KEY
         sync: false
       - key: ANALYZER_PROVIDER
