@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -19,6 +19,18 @@ class Settings(BaseSettings):
         default="postgresql+psycopg://reputation:reputation@localhost:5432/reputation",
         alias="DATABASE_URL",
     )
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _fix_db_url(cls, v: str) -> str:
+        """Render injects postgresql:// — SQLAlchemy needs postgresql+psycopg:// (psycopg3).
+        Also handles the legacy postgres:// alias used by some providers."""
+        if v.startswith("postgres://"):
+            v = "postgresql+psycopg" + v[len("postgres"):]
+        elif v.startswith("postgresql://"):
+            v = "postgresql+psycopg" + v[len("postgresql"):]
+        return v
+
     redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
     celery_broker_url: str = Field(
         default="redis://localhost:6379/1", alias="CELERY_BROKER_URL"
