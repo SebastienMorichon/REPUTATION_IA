@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif;
+    background: #FFFFFF;
+    color: #1A1A1A;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  /* ── Cover ─────────────────────────────────────── */
+  .cover {
+    background: #0E1117;
+    color: white;
+    padding: 52px 52px 36px;
+  }
+
+  .cover-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+
+  .brand-row { display: flex; align-items: center; gap: 18px; }
+
+  .brand-avatar {
+    width: 60px; height: 60px;
+    background: #C5F236;
+    color: #0E1117;
+    border-radius: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 22px;
+    flex-shrink: 0;
+  }
+
+  .report-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: #C5F236;
+    margin-bottom: 6px;
+  }
+
+  .brand-name { font-size: 30px; font-weight: 700; color: #FFFFFF; }
+
+  .brand-meta {
+    font-size: 12px;
+    color: rgba(255,255,255,0.45);
+    margin-top: 4px;
+  }
+
+  .overall-grade-wrap { text-align: center; }
+
+  .overall-circle {
+    width: 76px; height: 76px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 34px;
+    font-weight: 800;
+    color: white;
+    margin: 0 auto;
+  }
+
+  .overall-label {
+    font-size: 11px;
+    color: rgba(255,255,255,0.45);
+    margin-top: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .cover-divider {
+    border: none;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    margin: 28px 0 20px;
+  }
+
+  .cover-footer {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: rgba(255,255,255,0.35);
+  }
+
+  /* ── Content ───────────────────────────────────── */
+  .content { padding: 44px 52px; }
+
+  /* ── Summary box ───────────────────────────────── */
+  .summary-box {
+    background: #F0F9E8;
+    border-left: 4px solid #C5F236;
+    border-radius: 0 12px 12px 0;
+    padding: 20px 24px;
+    margin-bottom: 36px;
+  }
+
+  .summary-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #2D9E5F;
+    margin-bottom: 8px;
+  }
+
+  .summary-text { font-size: 13px; color: #1A1A1A; line-height: 1.65; }
+
+  /* ── Section ────────────────────────────────────── */
+  .section { margin-bottom: 40px; }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #8B8880;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #E8E5DE;
+    margin-bottom: 20px;
+  }
+
+  /* ── KPI grid ───────────────────────────────────── */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+  }
+
+  .kpi-card {
+    background: #F8F7F4;
+    border: 1px solid #E8E5DE;
+    border-radius: 16px;
+    padding: 20px 18px;
+  }
+
+  .kpi-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+
+  .kpi-icon { font-size: 18px; }
+
+  .kpi-grade-badge {
+    width: 30px; height: 30px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 14px;
+    color: white;
+  }
+
+  .kpi-value {
+    font-size: 34px;
+    font-weight: 700;
+    color: #1A1A1A;
+    line-height: 1;
+  }
+
+  .kpi-suffix {
+    font-size: 16px;
+    font-weight: 500;
+    color: #8B8880;
+    margin-left: 2px;
+  }
+
+  .kpi-label {
+    font-size: 11px;
+    color: #8B8880;
+    margin-top: 6px;
+    line-height: 1.3;
+  }
+
+  .kpi-grade-label {
+    font-size: 11px;
+    font-weight: 600;
+    margin-top: 3px;
+  }
+
+  /* ── SoV ────────────────────────────────────────── */
+  .sov-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 10px;
+  }
+
+  .sov-name {
+    width: 160px;
+    font-size: 12px;
+    color: #1A1A1A;
+    flex-shrink: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .sov-name.target { font-weight: 700; }
+
+  .sov-track {
+    flex: 1;
+    background: #E8E5DE;
+    height: 10px;
+    border-radius: 5px;
+    overflow: hidden;
+  }
+
+  .sov-fill {
+    height: 100%;
+    border-radius: 5px;
+  }
+
+  .sov-pct {
+    width: 44px;
+    text-align: right;
+    font-size: 12px;
+    font-weight: 600;
+    color: #1A1A1A;
+    flex-shrink: 0;
+  }
+
+  /* ── Heatmap ────────────────────────────────────── */
+  .heatmap {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .heatmap th {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: #8B8880;
+    padding: 8px 10px;
+    background: #F8F7F4;
+    border-bottom: 1px solid #E8E5DE;
+    text-align: left;
+  }
+
+  .heatmap th.c { text-align: center; }
+
+  .heatmap td {
+    padding: 10px;
+    border-bottom: 1px solid #F2EFE8;
+    vertical-align: middle;
+  }
+
+  .heatmap tr:last-child td { border-bottom: none; }
+
+  .prompt-text {
+    font-size: 12px;
+    color: #1A1A1A;
+    max-width: 320px;
+    line-height: 1.4;
+  }
+
+  .heat-cell {
+    width: 44px; height: 30px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    margin: 0 auto;
+  }
+
+  .legend {
+    margin-top: 14px;
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 10px; color: #8B8880; }
+
+  .legend-swatch {
+    width: 28px; height: 18px;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 700;
+  }
+
+  /* ── Recommendations ────────────────────────────── */
+  .rec {
+    border-radius: 12px;
+    border: 1px solid #E8E5DE;
+    border-left: 5px solid #E8E5DE;
+    padding: 20px;
+    margin-bottom: 14px;
+    background: #FDFCFA;
+  }
+
+  .rec.high  { border-left-color: #D94040; }
+  .rec.medium { border-left-color: #C97B18; }
+
+  .rec-header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
+
+  .rec-icon { font-size: 22px; flex-shrink: 0; line-height: 1; }
+
+  .rec-title { font-size: 14px; font-weight: 700; color: #1A1A1A; line-height: 1.3; }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+
+  .badge.high   { background: rgba(217,64,64,0.12);  color: #D94040; }
+  .badge.medium { background: rgba(201,123,24,0.12); color: #C97B18; }
+
+  .rec-desc {
+    font-size: 12px;
+    color: #6B6866;
+    margin-bottom: 14px;
+    line-height: 1.6;
+  }
+
+  .actions { list-style: none; display: flex; flex-direction: column; gap: 7px; }
+
+  .action {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 12px;
+    color: #1A1A1A;
+  }
+
+  .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #C5F236;
+    flex-shrink: 0;
+    margin-top: 5px;
+  }
+
+  .action-type {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    background: #EEECE7;
+    color: #8B8880;
+    margin-left: 5px;
+    vertical-align: middle;
+  }
+
+  /* ── Footer ─────────────────────────────────────── */
+  .footer {
+    background: #F8F7F4;
+    border-top: 1px solid #E8E5DE;
+    padding: 18px 52px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #8B8880;
+  }
+
+  .footer-logo { font-weight: 800; color: #1A1A1A; font-size: 12px; }
+
+  /* ── Print / page breaks ────────────────────────── */
+  @media print {
+    .page-break { page-break-before: always; }
+  }
+  .page-break { page-break-before: always; break-before: page; }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════ COVER -->
+<div class="cover">
+  <div class="cover-top">
+    <div class="brand-row">
+      <div class="brand-avatar">{{ brand_initials }}</div>
+      <div>
+        <div class="report-label">Rapport de visibilité IA</div>
+        <div class="brand-name">{{ brand_name }}</div>
+        <div class="brand-meta">
+          {% if brand_domain %}{{ brand_domain }} · {% endif %}
+          {% if brand_category %}{{ brand_category }} · {% endif %}
+          Période : {{ period_days }} derniers jours
+        </div>
+      </div>
+    </div>
+    <div class="overall-grade-wrap">
+      <div class="overall-circle" style="background: {{ overall_grade.color }}">
+        {{ overall_grade.letter }}
+      </div>
+      <div class="overall-label">Note globale</div>
+    </div>
+  </div>
+  <hr class="cover-divider">
+  <div class="cover-footer">
+    <span>AI Reputation Shield</span>
+    <span>{{ generated_at }}</span>
+    <span>{{ runs_count }} analyses réalisées</span>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════ CONTENT -->
+<div class="content">
+
+  <!-- Executive summary -->
+  <div class="summary-box">
+    <div class="summary-label">Synthèse exécutive</div>
+    <div class="summary-text">{{ summary_text }}</div>
+  </div>
+
+  <!-- ── KPIs ─────────────────────────────────────────── -->
+  <div class="section">
+    <div class="section-title">Indicateurs clés de performance</div>
+    <div class="kpi-grid">
+      {% for kpi in kpis %}
+      <div class="kpi-card">
+        <div class="kpi-top">
+          <span class="kpi-icon">{{ kpi.icon }}</span>
+          <div class="kpi-grade-badge" style="background: {{ kpi.grade.color }}">
+            {{ kpi.grade.letter }}
+          </div>
+        </div>
+        <div>
+          <span class="kpi-value">{{ kpi.value }}</span><span class="kpi-suffix"> %</span>
+        </div>
+        <div class="kpi-label">{{ kpi.label }}</div>
+        <div class="kpi-grade-label" style="color: {{ kpi.grade.color }}">{{ kpi.grade.label }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- ── Competitive benchmark ─────────────────────────── -->
+  {% if sov_entries and sov_entries | length > 1 %}
+  <div class="section">
+    <div class="section-title">Présence face aux concurrents</div>
+    {% for entry in sov_entries %}
+    <div class="sov-row">
+      <div class="sov-name {% if entry.is_target %}target{% endif %}">{{ entry.name }}</div>
+      <div class="sov-track">
+        <div class="sov-fill" style="
+          width: {{ entry.pct }}%;
+          background: {% if entry.is_target %}#C5F236{% else %}#B8B5AE{% endif %};
+        "></div>
+      </div>
+      <div class="sov-pct">{{ entry.pct }} %</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- ── Heatmap ─────────────────────────────────────────── -->
+  {% if heatmap and providers %}
+  <div class="section page-break">
+    <div class="section-title">Position par question et par IA (#1 = meilleure place)</div>
+    <table class="heatmap">
+      <thead>
+        <tr>
+          <th>Question posée à l'IA</th>
+          {% for prov in providers %}
+          <th class="c">{{ prov[:3] | upper }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in heatmap %}
+        <tr>
+          <td><div class="prompt-text">{{ row.prompt_text }}</div></td>
+          {% for prov in providers %}
+          {% set cell = row.cells.get(prov, {}) %}
+          {% set status = cell.get('status', 'none') %}
+          {% set rank = cell.get('rank') %}
+          <td>
+            {% if status == 'cited' %}
+              {% if rank == 1 %}
+                <div class="heat-cell" style="background:#1C1C1A; color:#FFFFFF;">#1</div>
+              {% elif rank == 2 %}
+                <div class="heat-cell" style="background:#3D7A29; color:#FFFFFF;">#2</div>
+              {% elif rank == 3 %}
+                <div class="heat-cell" style="background:#7DBF52; color:#FFFFFF;">#3</div>
+              {% elif rank %}
+                <div class="heat-cell" style="background:#B8E08A; color:#1A1A1A;">#{{ rank }}</div>
+              {% else %}
+                <div class="heat-cell" style="background:#B8E08A; color:#1A1A1A;">✓</div>
+              {% endif %}
+            {% elif status == 'absent' %}
+              <div class="heat-cell" style="background:#EEECE7; color:#8B8880;">○</div>
+            {% elif status == 'failed' %}
+              <div class="heat-cell" style="background:#FECACA; color:#D94040;">✗</div>
+            {% elif status == 'pending' %}
+              <div class="heat-cell" style="background:#FEF3C7; color:#C97B18;">…</div>
+            {% else %}
+              <div class="heat-cell" style="background:#F2EFE8; color:#8B8880;">—</div>
+            {% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="legend">
+      <span style="font-size:10px; color:#8B8880;">Légende :</span>
+      {% for leg in legend %}
+      <div class="legend-item">
+        <div class="legend-swatch" style="background:{{ leg.bg }}; color:{{ leg.fg }}">{{ leg.sym }}</div>
+        <span>{{ leg.label }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ── Recommendations ───────────────────────────────── -->
+  {% if recommendations %}
+  <div class="section page-break">
+    <div class="section-title">Plan d'action — recommandations prioritaires</div>
+    {% for rec in recommendations %}
+    <div class="rec {{ rec.priority }}">
+      <div class="rec-header">
+        <span class="rec-icon">{{ rec.icon }}</span>
+        <div>
+          <div class="rec-title">
+            {{ rec.title }}
+            <span class="badge {{ rec.priority }}">
+              {{ 'Priorité haute' if rec.priority == 'high' else 'Priorité moyenne' }}
+            </span>
+          </div>
+        </div>
+      </div>
+      <div class="rec-desc">{{ rec.description }}</div>
+      <ul class="actions">
+        {% for action in rec.actions %}
+        <li class="action">
+          <div class="dot"></div>
+          <span>
+            {{ action.text }}
+            <span class="action-type">{{ action.type }}</span>
+          </span>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+</div><!-- /content -->
+
+<!-- ════════════════════════════════════════════════ FOOTER -->
+<div class="footer">
+  <div class="footer-logo">AI Reputation Shield</div>
+  <div>Rapport confidentiel · {{ brand_name }}</div>
+  <div>{{ period_days }} jours · {{ runs_count }} analyses · {{ generated_at }}</div>
+</div>
+
+</body>
+</html>

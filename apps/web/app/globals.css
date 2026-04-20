@@ -1,0 +1,261 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ═══════════════════════════════════════════════════════════════
+   THÈME CLAIR — "Pearl"
+   Palette unifiée : tout dans la même famille chaude + indigo
+   ═══════════════════════════════════════════════════════════════ */
+:root {
+  color-scheme: light;
+
+  /* Surfaces */
+  --bg:         #F5F4F1;   /* fond principal — blanc cassé très légèrement chaud */
+  --card:       #FFFFFF;   /* cartes — blanc pur, élévation claire */
+  --sidebar:    #EDEAE3;   /* sidebar — crème chaude, même famille que bg */
+
+  /* Texte */
+  --text:       #18171A;   /* texte principal — presque noir */
+  --muted:      #706C67;   /* texte secondaire — gris chaud moyen */
+
+  /* Bordures */
+  --border:     rgba(24, 23, 26, 0.1);
+
+  /* Accent — Indigo (IA, technologie, confiance) */
+  --accent:     #4F46E5;   /* Indigo 600 */
+  --accent-fg:  #FFFFFF;
+
+  /* États */
+  --good:       #16A34A;   /* vert succès */
+  --warn:       #B45309;   /* ambre avertissement */
+  --bad:        #DC2626;   /* rouge erreur */
+
+  /* Tuile KPI "featured" — s'adapte au thème */
+  --feat:       #18171A;   /* fond sombre en thème clair pour contraste */
+  --feat-text:  #4F46E5;   /* texte en couleur accent */
+
+  /* ── Sidebar-specific — s'adapte au thème ────────────────── */
+  --sidebar-fg:         #18171A;                 /* texte sur sidebar */
+  --sidebar-muted:      rgba(24, 23, 26, 0.45);  /* texte secondaire sidebar */
+  --sidebar-border:     rgba(24, 23, 26, 0.09);  /* bordures sidebar */
+  --sidebar-chip:       rgba(24, 23, 26, 0.05);  /* fond chip sidebar */
+  --sidebar-hover:      rgba(24, 23, 26, 0.06);  /* hover links sidebar */
+
+  /* ── Typographie ─────────────────────────────────────────── */
+  --font-sans:    "Inter", ui-sans-serif;
+  --font-display: "Playfair Display", Georgia;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   VARIANTES DE COULEUR D'ACCENT
+   S'appliquent par-dessus le thème via [data-accent="nom"]
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Indigo (défaut) — déjà défini dans :root et [data-theme="dark"] */
+
+/* Bleu — professionnel, neutre */
+[data-accent="blue"] {
+  --accent: #0284C7;
+  --accent-fg: #FFFFFF;
+  --feat-text: #0284C7;
+}
+[data-theme="dark"][data-accent="blue"] {
+  --accent: #38BDF8;
+  --feat-text: #38BDF8;
+}
+
+/* Violet — créatif, premium */
+[data-accent="violet"] {
+  --accent: #7C3AED;
+  --accent-fg: #FFFFFF;
+  --feat-text: #7C3AED;
+}
+[data-theme="dark"][data-accent="violet"] {
+  --accent: #A78BFA;
+  --feat-text: #A78BFA;
+}
+
+/* Émeraude — croissance, succès */
+[data-accent="emerald"] {
+  --accent: #059669;
+  --accent-fg: #FFFFFF;
+  --feat-text: #059669;
+}
+[data-theme="dark"][data-accent="emerald"] {
+  --accent: #34D399;
+  --feat-text: #34D399;
+}
+
+/* Ambre — énergie, attention */
+[data-accent="amber"] {
+  --accent: #D97706;
+  --accent-fg: #FFFFFF;
+  --feat-text: #D97706;
+}
+[data-theme="dark"][data-accent="amber"] {
+  --accent: #FBBF24;
+  --feat-text: #FBBF24;
+}
+
+/* Rose — audacieux, moderne */
+[data-accent="pink"] {
+  --accent: #DB2777;
+  --accent-fg: #FFFFFF;
+  --feat-text: #DB2777;
+}
+[data-theme="dark"][data-accent="pink"] {
+  --accent: #F472B6;
+  --feat-text: #F472B6;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   THÈME SOMBRE — "Void"
+   Palette unifiée : tout dans la même famille anthracite + indigo clair
+   ═══════════════════════════════════════════════════════════════ */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Surfaces */
+  --bg:         #0D0D0F;   /* fond — quasi noir, légèrement violacé */
+  --card:       #141417;   /* cartes — légèrement élevé */
+  --sidebar:    #101013;   /* sidebar — légèrement plus sombre */
+
+  /* Texte */
+  --text:       #EDEAE5;   /* texte principal — blanc cassé chaud */
+  --muted:      #8B8884;   /* texte secondaire */
+
+  /* Bordures */
+  --border:     rgba(255, 255, 255, 0.08);
+
+  /* Accent — Indigo clair (lisible sur fond sombre) */
+  --accent:     #818CF8;   /* Indigo 400 */
+  --accent-fg:  #FFFFFF;
+
+  /* États */
+  --good:       #22C55E;
+  --warn:       #F59E0B;
+  --bad:        #F87171;
+
+  /* Tuile KPI "featured" */
+  --feat:       #1C1C21;
+  --feat-text:  #818CF8;
+
+  /* ── Sidebar-specific ──────────────────────────────────────── */
+  --sidebar-fg:         rgba(237, 234, 229, 0.88);
+  --sidebar-muted:      rgba(237, 234, 229, 0.35);
+  --sidebar-border:     rgba(255, 255, 255, 0.07);
+  --sidebar-chip:       rgba(255, 255, 255, 0.05);
+  --sidebar-hover:      rgba(255, 255, 255, 0.06);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   BASE
+   ═══════════════════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   COMPOSANTS RÉUTILISABLES
+   ═══════════════════════════════════════════════════════════════ */
+.card {
+  @apply bg-card border border-border rounded-2xl p-5;
+}
+
+.card-feat {
+  @apply bg-feat rounded-2xl p-5;
+}
+
+.btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2
+         text-sm font-medium transition-all duration-150;
+}
+
+/* Bouton principal — fond accent (indigo) */
+.btn-primary {
+  @apply btn bg-accent text-accent-fg hover:opacity-90 active:scale-95;
+}
+
+/* Bouton secondaire — contour */
+.btn-ghost {
+  @apply btn border border-border text-text hover:bg-card active:scale-95;
+}
+
+/* Bouton sombre — uniquement pour des contextes qui le nécessitent */
+.btn-dark {
+  @apply btn bg-sidebar text-sidebar-fg hover:opacity-90 active:scale-95;
+}
+
+.input {
+  @apply w-full rounded-xl border border-border bg-card px-3 py-2
+         text-sm text-text outline-none placeholder:text-muted
+         focus:border-accent transition-colors;
+}
+
+.label {
+  @apply block text-[10px] font-medium uppercase tracking-[0.12em] text-muted mb-1.5;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   TYPOGRAPHIE
+   ═══════════════════════════════════════════════════════════════ */
+.num {
+  font-family: var(--font-display), Georgia, serif;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SIDEBAR — s'adapte au thème grâce aux variables dédiées
+   ═══════════════════════════════════════════════════════════════ */
+.sidebar-link {
+  @apply flex items-center gap-3 rounded-lg px-3 py-2 text-sm
+         transition-colors duration-150;
+  color: var(--sidebar-muted);
+}
+.sidebar-link:hover {
+  color: var(--sidebar-fg);
+  background-color: var(--sidebar-hover);
+}
+.sidebar-link.active {
+  background-color: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 600;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SCROLLBAR
+   ═══════════════════════════════════════════════════════════════ */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+/* ═══════════════════════════════════════════════════════════════
+   PAGES LÉGALES
+   ═══════════════════════════════════════════════════════════════ */
+.prose-legal { color: var(--text); max-width: 100%; }
+.prose-legal h1 { font-size: 2rem; font-weight: 700; line-height: 1.2; margin-bottom: 0.5rem; }
+.prose-legal .subtitle { color: var(--muted); font-size: 0.875rem; margin-bottom: 2.5rem; }
+.prose-legal h2 { font-size: 1.125rem; font-weight: 700; color: var(--text); margin-top: 2.5rem; margin-bottom: 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+.prose-legal h3 { font-size: 0.9375rem; font-weight: 600; color: var(--text); margin-top: 1.5rem; margin-bottom: 0.5rem; }
+.prose-legal p  { font-size: 0.875rem; line-height: 1.7; color: var(--muted); margin-bottom: 0.875rem; }
+.prose-legal ul { list-style: disc; padding-left: 1.5rem; margin-bottom: 1rem; }
+.prose-legal li { font-size: 0.875rem; line-height: 1.7; color: var(--muted); margin-bottom: 0.25rem; }
+.prose-legal strong { color: var(--text); font-weight: 600; }
+.prose-legal a  { color: var(--accent); text-decoration: underline; }
+.prose-legal a:hover { opacity: 0.8; }
+.prose-legal .highlight-box { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.25rem; margin: 1.5rem 0; }
+.prose-legal .highlight-box p { margin-bottom: 0; }
+.prose-legal .warn-box { background: rgba(180,83,9,.08); border: 1px solid rgba(180,83,9,.25); border-radius: 12px; padding: 1rem 1.25rem; margin: 1.5rem 0; }
+.prose-legal .warn-box p { margin-bottom: 0; color: var(--warn); }
+.prose-legal table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; margin: 1.25rem 0; }
+.prose-legal th { text-align: left; padding: 0.5rem 0.75rem; background: var(--card); border: 1px solid var(--border); font-weight: 600; color: var(--text); }
+.prose-legal td { padding: 0.5rem 0.75rem; border: 1px solid var(--border); color: var(--muted); }
+.prose-legal .fill { background: rgba(220,38,38,.1); color: var(--bad); border-radius: 4px; padding: 1px 6px; font-size: 0.8125rem; font-weight: 600; }

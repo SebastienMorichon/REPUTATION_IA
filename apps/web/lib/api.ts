@@ -1,0 +1,183 @@
+"use client";
+
+export const API_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+const TOKEN_KEY = "reputation.token";
+
+export function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setToken(token: string) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function clearToken() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+export class ApiError extends Error {
+  status: number;
+  body: unknown;
+  constructor(status: number, body: unknown, message: string) {
+    super(message);
+    this.status = status;
+    this.body = body;
+  }
+}
+
+export async function apiFetch<T = unknown>(
+  path: string,
+  init: RequestInit = {},
+): Promise<T> {
+  const token = getToken();
+  const headers = new Headers(init.headers);
+  headers.set("Content-Type", "application/json");
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
+  const res = await fetch(`${API_URL}${path}`, { ...init, headers });
+  const text = await res.text();
+  const body = text ? JSON.parse(text) : null;
+
+  if (!res.ok) {
+    const detail =
+      (body && typeof body === "object" && "detail" in body
+        ? String((body as { detail: unknown }).detail)
+        : res.statusText) || "Request failed";
+    throw new ApiError(res.status, body, detail);
+  }
+  return body as T;
+}
+
+// ----- Types mirroring the backend schemas -----
+
+export interface User {
+  id: string;
+  email: string;
+  full_name: string | null;
+  organization_id: string;
+}
+
+export interface AuthResponse {
+  access_token: string;
+  token_type: string;
+  user: User;
+}
+
+export interface Brand {
+  id: string;
+  organization_id: string;
+  name: string;
+  domain: string | null;
+  category: string | null;
+  country: string | null;
+  language: string | null;
+  description: string | null;
+  aliases: string[] | null;
+  created_at: string;
+  run_schedule: "none" | "weekly" | "monthly" | null;
+  alert_email: string | null;
+}
+
+export async function patchBrand(
+  id: string,
+  data: { run_schedule?: string; alert_email?: string }
+): Promise<Brand> {
+  return apiFetch<Brand>(`/brands/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export interface Competitor {
+  id: string;
+  brand_id: string;
+  name: string;
+  domain: string | null;
+  aliases: string[] | null;
+}
+
+export interface Prompt {
+  id: string;
+  brand_id: string;
+  text: string;
+  language: string | null;
+  intent: string | null;
+  importance: number;
+  enabled: boolean;
+  created_at: string;
+}
+
+export interface Mention {
+  entity_name: string;
+  is_target_brand: boolean;
+  is_known_competitor: boolean;
+  rank_position: number | null;
+  sentiment: string | null;
+  mention_type: string | null;
+  context_excerpt: string | null;
+}
+
+export interface Citation {
+  url: string | null;
+  domain: string | null;
+  title: string | null;
+  citation_type: string | null;
+  refers_to_target: boolean;
+}
+
+export interface PromptRun {
+  id: string;
+  prompt_id: string;
+  brand_id: string;
+  provider: string;
+  model: string;
+  status: "pending" | "running" | "done" | "failed";
+  raw_response: string | null;
+  analysis: Record<string, unknown> | null;
+  latency_ms: number | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  error: string | null;
+  executed_at: string | null;
+  created_at: string;
+  mentions: Mention[];
+  citations: Citation[];
+}
+
+export interface Scores {
+  period_days: number;
+  runs_count: number;
+  visibility_score: number;
+  share_of_voice: number;
+  sentiment_score: number;
+  citation_score: number;
+  top_competitors: { name: string; mentions: number }[];
+}
+
+export interface ProviderStatus {
+  name: string;
+  enabled: boolean;
+  default_model: string;
+}
+
+export interface BillingSubscription {
+  plan: string;
+  plan_label: string;
+  effective_plan: string;
+  effective_plan_label: string;
+  is_trial: boolean;
+  trial_days_remaining: number | null;
+  stripe_enabled: boolean;
+  has_active_subscription: boolean;
+  limits: {
+    max_brands: number;
+    pdf_export: boolean;
+    recommendations: boolean;
+    scheduled_runs: boolean;
+  };
+}
