@@ -19,14 +19,10 @@ services:
           name: reputation-db
           property: connectionString
       - key: CELERY_BROKER_URL
-        fromService:
-          type: redis
-          name: reputation-redis
-          property: connectionString
+        sync: false
       - key: CELERY_RESULT_BACKEND
-        fromService:
-          type: redis
-          name: reputation-redis
+        fromDatabase:
+          name: reputation-db
           property: connectionString
       - key: JWT_SECRET
         generateValue: true
@@ -51,8 +47,4 @@ databases:
   - name: reputation-db
     databaseName: reputation_ai
     user: reputation_user
-    plan: free
-
-redis:
-  - name: reputation-redis
     plan: free
