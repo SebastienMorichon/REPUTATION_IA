@@ -60,6 +60,8 @@ class Settings(BaseSettings):
     smtp_password: str = Field(default="", alias="SMTP_PASSWORD")
     smtp_from: str = Field(default="noreply@reputation-ai.app", alias="SMTP_FROM")
 
+    # Comma-separated list of allowed CORS origins (or "*" to allow all).
+    # Example: https://app.vercel.app,https://other-preview.vercel.app
     web_origin: str = Field(default="http://localhost:3000", alias="WEB_ORIGIN")
 
     # Stripe — leave empty to disable payment features

@@ -8,13 +8,25 @@ from app.routers import admin, alerts, auth, billing, brands, prompts, providers
 settings = get_settings()
 
 
+def _parse_origins(raw: str) -> list[str]:
+    """Accept comma-separated origins or '*'."""
+    if not raw:
+        return ["http://localhost:3000"]
+    parts = [o.strip() for o in raw.split(",") if o.strip()]
+    return parts or ["http://localhost:3000"]
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="AI Reputation Shield API", version="0.1.0")
 
+    origins = _parse_origins(settings.web_origin)
+    allow_all = origins == ["*"]
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[settings.web_origin],
-        allow_credentials=True,
+        allow_origins=["*"] if allow_all else origins,
+        allow_origin_regex=r"https://.*\.vercel\.app" if not allow_all else None,
+        allow_credentials=not allow_all,
         allow_methods=["*"],
         allow_headers=["*"],
     )
