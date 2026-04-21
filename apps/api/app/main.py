@@ -8,6 +8,23 @@ from app.routers import admin, alerts, auth, billing, brands, content, prompts, 
 
 settings = get_settings()
 
+# Run migrations immediately at module import time, before any request can be handled
+print("🔍 Running database migrations at import time...")
+try:
+    Base.metadata.create_all(bind=engine)
+    with engine.connect() as conn:
+        inspector = inspect(engine)
+        prompts_columns = [col["name"] for col in inspector.get_columns("prompts")]
+        if "use_web_search" not in prompts_columns:
+            print("➕ Adding use_web_search column to prompts table...")
+            conn.execute(text("ALTER TABLE prompts ADD COLUMN use_web_search BOOLEAN DEFAULT FALSE"))
+            conn.commit()
+            print("✅ Column use_web_search added!")
+        else:
+            print("✅ Column use_web_search already exists")
+except Exception as e:
+    print(f"⚠️  Migration note: {e}")
+
 
 def _parse_origins(raw: str) -> list[str]:
     """Accept comma-separated origins or '*'."""
@@ -64,9 +81,8 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     def _bootstrap_schema() -> None:
-        # MVP: auto-create tables + run column migrations
+        # MVP: auto-create tables (migrations already ran at import time)
         Base.metadata.create_all(bind=engine)
-        _run_migrations()
 
     @app.get("/health")
     def health() -> dict:
