@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text, inspect
 
 from app.config import get_settings
 from app.database import Base, engine
@@ -14,6 +15,24 @@ def _parse_origins(raw: str) -> list[str]:
         return ["http://localhost:3000"]
     parts = [o.strip() for o in raw.split(",") if o.strip()]
     return parts or ["http://localhost:3000"]
+
+
+def _run_migrations() -> None:
+    """Auto-migrate missing columns on startup."""
+    try:
+        with engine.connect() as conn:
+            inspector = inspect(engine)
+            prompts_columns = [col["name"] for col in inspector.get_columns("prompts")]
+
+            if "use_web_search" not in prompts_columns:
+                print("➕ Adding use_web_search column to prompts table...")
+                conn.execute(text("ALTER TABLE prompts ADD COLUMN use_web_search BOOLEAN DEFAULT FALSE"))
+                conn.commit()
+                print("✅ Migration successful!")
+            else:
+                print("✅ Column use_web_search already exists")
+    except Exception as e:
+        print(f"⚠️  Migration check completed (or skipped): {e}")
 
 
 def create_app() -> FastAPI:
@@ -33,8 +52,9 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     def _bootstrap_schema() -> None:
-        # MVP: auto-create tables. Replace with Alembic before first prod deploy.
+        # MVP: auto-create tables + run column migrations
         Base.metadata.create_all(bind=engine)
+        _run_migrations()
 
     @app.get("/health")
     def health() -> dict:
