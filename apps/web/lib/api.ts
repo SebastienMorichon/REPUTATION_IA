@@ -4,6 +4,7 @@ export const API_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 const TOKEN_KEY = "reputation.token";
+const USER_KEY  = "reputation.user";
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -18,6 +19,26 @@ export function setToken(token: string) {
 export function clearToken() {
   if (typeof window === "undefined") return;
   localStorage.removeItem(TOKEN_KEY);
+}
+
+export function getUser(): User | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(USER_KEY);
+    return raw ? (JSON.parse(raw) as User) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setUser(user: User): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+}
+
+export function clearUser(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(USER_KEY);
 }
 
 export class ApiError extends Error {
@@ -60,6 +81,7 @@ export interface User {
   email: string;
   full_name: string | null;
   organization_id: string;
+  is_admin: boolean;
 }
 
 export interface AuthResponse {
@@ -109,6 +131,7 @@ export interface Prompt {
   intent: string | null;
   importance: number;
   enabled: boolean;
+  use_web_search: boolean;
   created_at: string;
 }
 
@@ -147,6 +170,16 @@ export interface PromptRun {
   created_at: string;
   mentions: Mention[];
   citations: Citation[];
+  prompt?: Prompt;
+}
+
+export interface Alert {
+  id: string;
+  kind: "failed" | "absent" | "negative" | "new_citation";
+  severity: "high" | "medium" | "low";
+  title: string;
+  description: string;
+  created_at: string;
 }
 
 export interface Scores {
@@ -179,5 +212,70 @@ export interface BillingSubscription {
     pdf_export: boolean;
     recommendations: boolean;
     scheduled_runs: boolean;
+    auto_generate_prompts: boolean;
+    max_runs_per_week: number;
   };
+  quota?: {
+    runs_this_week: number;
+    runs_remaining: number | null;  // null = illimité
+    can_run: boolean;
+    block_reason: string | null;
+  };
+}
+
+// ----- Editorial content types -----
+
+export interface ArticleListItem {
+  id: string;
+  organization_id: string;
+  brand_id: string | null;
+  status: "idea" | "drafting" | "draft" | "review" | "approved" | "published" | "failed";
+  title: string | null;
+  slug: string | null;
+  excerpt: string | null;
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ArticleReview {
+  quality_score: number;
+  seo_score: number;
+  factual_risk: "low" | "medium" | "high";
+  duplicate_risk: "low" | "medium" | "high";
+  needs_human_review: boolean;
+  review_notes: string;
+  suggested_edits: string[];
+}
+
+export interface ArticleLinkedIn {
+  post: string;
+  short_variant: string;
+  hook: string;
+  hashtags: string[];
+  cta: string;
+}
+
+export interface Article extends ArticleListItem {
+  content_markdown: string | null;
+  seo_title: string | null;
+  seo_description: string | null;
+  brief: Record<string, unknown> | null;
+  review: ArticleReview | null;
+  linkedin_variants: ArticleLinkedIn | null;
+  linkedin_post_url: string | null;
+  error: string | null;
+}
+
+export interface BlogPost {
+  title: string;
+  slug: string;
+  excerpt: string;
+  published_at: string | null;
+  seo_title: string | null;
+  seo_description: string | null;
+}
+
+export interface BlogPostFull extends BlogPost {
+  content_markdown: string;
 }

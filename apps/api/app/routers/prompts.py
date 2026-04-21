@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import brand_for_user, current_user
 from app.models import Brand, Prompt, User
-from app.schemas import PromptCreate, PromptRead
+from app.schemas import PromptCreate, PromptRead, PromptUpdate
 
 logger = logging.getLogger(__name__)
 
@@ -419,8 +419,21 @@ def generate_prompts(
     2. Fallback → pick from the hardcoded generic templates for the brand's category.
 
     In both cases, prompts that already exist (exact text match) are skipped.
+
+    NOTE: This endpoint is disabled for free plan users.
     """
+    from app.plan_limits import get_limits, effective_plan
+
     brand = brand_for_user(brand_id, user, db)
+    org = brand.organization
+
+    # Check if auto-generate is allowed for this plan
+    limits = get_limits(org.plan, org.trial_ends_at)
+    if not limits.auto_generate_prompts:
+        raise HTTPException(
+            status_code=403,
+            detail="La génération automatique de questions n'est pas disponible sur votre plan. Veuillez passer à un abonnement payant."
+        )
     existing_texts = {p.text for p in brand.prompts}
     location = location.strip()
 
@@ -461,6 +474,37 @@ def generate_prompts(
         db.refresh(p)
 
     return created
+
+
+@router.patch("/{prompt_id}", response_model=PromptRead)
+def update_prompt(
+    brand_id: UUID,
+    prompt_id: UUID,
+    body: PromptUpdate,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> Prompt:
+    """Update prompt settings (e.g., use_web_search)."""
+    from app.plan_limits import effective_plan
+
+    brand = brand_for_user(brand_id, user, db)
+    prompt = db.get(Prompt, prompt_id)
+    if not prompt or prompt.brand_id != brand.id:
+        raise HTTPException(status_code=404, detail="Prompt not found")
+
+    # Check plan eligibility for web_search toggle
+    if body.use_web_search is not None:
+        org_plan = effective_plan(brand.organization.plan, brand.organization.trial_ends_at)
+        if org_plan not in ("pro", "agency", "trial"):
+            raise HTTPException(
+                status_code=403,
+                detail="La recherche web est réservée aux plans Pro et Agence."
+            )
+        prompt.use_web_search = body.use_web_search
+
+    db.commit()
+    db.refresh(prompt)
+    return prompt
 
 
 @router.delete("/{prompt_id}", status_code=204)

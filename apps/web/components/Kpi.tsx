@@ -16,10 +16,10 @@ export function Kpi({ label, value, sub, subUp, featured, className, tooltip }: 
     return (
       <div className={cn("card-feat flex flex-col justify-between min-h-[160px]", className)}>
         <div className="flex items-center gap-1.5">
-          <span className="label" style={{ color: "rgba(255,255,255,0.45)" }}>
+          <span className="label" style={{ color: "var(--muted)" }}>
             {label}
           </span>
-          {tooltip && <span style={{ color: "rgba(255,255,255,0.45)" }}>{tooltip}</span>}
+          {tooltip && <span style={{ color: "var(--muted)" }}>{tooltip}</span>}
         </div>
         <div>
           <div className="num text-5xl" style={{ color: "var(--feat-text)" }}>

@@ -17,9 +17,10 @@ const PLANS: {
     name: "Starter",
     price: 49,
     features: [
-      "1 marque suivie",
+      "5 marques suivies",
       "Claude + GPT-4o",
-      "1 analyse / semaine",
+      "RUNs illimités",
+      "Génération auto de questions",
       "Alertes email",
       "Rapport PDF mensuel",
     ],
@@ -30,9 +31,10 @@ const PLANS: {
     price: 149,
     recommended: true,
     features: [
-      "5 marques suivies",
+      "10 marques suivies",
       "Tous les providers IA",
-      "Analyses quotidiennes",
+      "RUNs illimités",
+      "Génération auto de questions",
       "Alertes email temps réel",
       "Rapports PDF illimités",
       "Recommandations avancées",
@@ -45,7 +47,8 @@ const PLANS: {
     features: [
       "Marques illimitées",
       "Tous les providers IA",
-      "Analyses temps réel",
+      "RUNs illimités",
+      "Génération auto de questions",
       "Multi-utilisateurs",
       "Rapports white-label",
       "Support prioritaire",
@@ -60,6 +63,105 @@ const PLAN_BADGE_STYLES: Record<string, { background: string; color: string; lab
   pro:     { background: "rgba(16,163,127,0.15)",  color: "var(--good)",   label: "Pro" },
   agency:  { background: "rgba(139,92,246,0.15)",  color: "#8B5CF6",       label: "Agence" },
 };
+
+/* ── Quota card ──────────────────────────────────────────── */
+function QuotaCard({ subscription }: { subscription: BillingSubscription }) {
+  const quota = subscription.quota;
+  const maxRuns = subscription.limits.max_runs_per_week;
+  const isUnlimited = maxRuns === -1;
+  const canRun = quota?.can_run ?? true;
+  const runsThisWeek = quota?.runs_this_week ?? 0;
+  const runsRemaining = quota?.runs_remaining ?? null;
+  const blockReason = quota?.block_reason ?? null;
+
+  const pct = isUnlimited ? 0 : Math.min(100, Math.round((runsThisWeek / maxRuns) * 100));
+  const barColor = pct >= 100 ? "var(--bad)" : pct >= 75 ? "var(--warn)" : "var(--accent)";
+
+  return (
+    <div className="card">
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold text-text">Quota d&apos;exécutions</p>
+          <p className="text-xs text-muted mt-0.5">Runs lancés sur les 7 derniers jours glissants</p>
+        </div>
+        {!canRun && (
+          <span
+            className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
+            style={{ background: "rgba(220,38,38,0.1)", color: "var(--bad)", border: "1px solid rgba(220,38,38,0.2)" }}
+          >
+            Quota atteint
+          </span>
+        )}
+        {canRun && !isUnlimited && runsRemaining !== null && runsRemaining <= 1 && (
+          <span
+            className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
+            style={{ background: "rgba(180,83,9,0.1)", color: "var(--warn)", border: "1px solid rgba(180,83,9,0.2)" }}
+          >
+            Presque épuisé
+          </span>
+        )}
+      </div>
+
+      {isUnlimited ? (
+        /* Unlimited plan */
+        <div className="flex items-center gap-3">
+          <div
+            className="flex h-10 w-10 items-center justify-center rounded-xl text-lg"
+            style={{ background: "rgba(79,70,229,0.1)" }}
+          >
+            ∞
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-text">Illimité</p>
+            <p className="text-xs text-muted">{runsThisWeek} run{runsThisWeek > 1 ? "s" : ""} lancé{runsThisWeek > 1 ? "s" : ""} cette semaine</p>
+          </div>
+        </div>
+      ) : (
+        /* Limited plan — show progress */
+        <div>
+          <div className="mb-2 flex items-end justify-between">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-2xl font-bold text-text">{runsThisWeek}</span>
+              <span className="text-sm text-muted">/ {maxRuns} run{maxRuns > 1 ? "s" : ""}</span>
+            </div>
+            <span className="text-xs font-medium" style={{ color: runsRemaining === 0 ? "var(--bad)" : "var(--muted)" }}>
+              {runsRemaining === 0
+                ? "Aucun run restant"
+                : `${runsRemaining} run${runsRemaining! > 1 ? "s" : ""} restant${runsRemaining! > 1 ? "s" : ""}`}
+            </span>
+          </div>
+          {/* Progress bar */}
+          <div className="h-2 w-full overflow-hidden rounded-full" style={{ background: "var(--border)" }}>
+            <div
+              className="h-full rounded-full transition-all duration-500"
+              style={{ width: `${pct}%`, background: barColor }}
+            />
+          </div>
+          <p className="mt-2 text-[11px] text-muted">
+            Réinitialisation chaque semaine • Plan {subscription.effective_plan_label}
+          </p>
+        </div>
+      )}
+
+      {/* Block reason */}
+      {blockReason && (
+        <div
+          className="mt-4 rounded-xl px-4 py-3 text-sm"
+          style={{ background: "rgba(220,38,38,0.06)", color: "var(--bad)", border: "1px solid rgba(220,38,38,0.15)" }}
+        >
+          {blockReason}
+        </div>
+      )}
+
+      {/* Upgrade CTA if limited */}
+      {!isUnlimited && (
+        <p className="mt-4 text-xs text-muted">
+          Passez au plan <span className="font-semibold text-accent">Starter ou supérieur</span> pour des runs illimités.
+        </p>
+      )}
+    </div>
+  );
+}
 
 /* ── FAQ item ────────────────────────────────────────────── */
 function FaqItem({ question, answer }: { question: string; answer: string }) {
@@ -194,7 +296,7 @@ export default function BillingPage() {
               <div className="flex-1">
                 <div
                   className="label mb-1"
-                  style={effectivePlan !== "free" ? { color: "rgba(228,226,220,0.45)" } : undefined}
+                  style={effectivePlan !== "free" ? { color: "var(--muted)" } : undefined}
                 >
                   Votre plan actuel
                 </div>
@@ -227,13 +329,13 @@ export default function BillingPage() {
                 {/* Trial progress bar */}
                 {isTrial && trialProgress !== null && (
                   <div className="mt-3 space-y-1">
-                    <div className="flex items-center justify-between text-xs" style={{ color: "rgba(228,226,220,0.45)" }}>
+                    <div className="flex items-center justify-between text-xs" style={{ color: "var(--muted)" }}>
                       <span>Progression de l&apos;essai</span>
                       <span>{trialDaysRemaining} / 14 jours restants</span>
                     </div>
                     <div
                       className="h-1.5 w-full overflow-hidden rounded-full"
-                      style={{ background: "rgba(255,255,255,0.1)" }}
+                      style={{ background: "var(--border)" }}
                     >
                       <div
                         className="h-full rounded-full transition-all"
@@ -257,7 +359,7 @@ export default function BillingPage() {
                 onClick={handlePortal}
                 disabled={portalLoading}
                 className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-opacity disabled:opacity-60"
-                style={{ background: "rgba(255,255,255,0.12)", color: "var(--feat-text)" }}
+                style={{ background: "var(--sidebar-chip)", color: "var(--feat-text)", border: "1px solid var(--border)" }}
               >
                 {portalLoading ? (
                   <>
@@ -277,6 +379,11 @@ export default function BillingPage() {
             )}
           </div>
         </div>
+      )}
+
+      {/* ── Section 1b — Quota d'exécution ────────────────── */}
+      {subscription && (
+        <QuotaCard subscription={subscription} />
       )}
 
       {/* ── Section 2 — Grille de pricing ─────────────────── */}

@@ -2,11 +2,13 @@
 
 Each plan defines hard limits applied at the API layer.
 During an active 14-day trial the user gets Pro-level access.
+After trial expires, users fall back to free plan limits.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from sqlalchemy.orm import Session
 
 
 @dataclass(frozen=True)
@@ -16,29 +18,37 @@ class PlanLimits:
     recommendations: bool
     scheduled_runs: bool
     max_providers: int    # -1 = unlimited
+    auto_generate_prompts: bool  # Can auto-generate prompts via LLM
+    max_runs_per_week: int  # -1 = unlimited, 0 = no runs allowed
 
 
 _LIMITS: dict[str, PlanLimits] = {
     "free": PlanLimits(
-        max_brands=1,
+        max_brands=3,
         pdf_export=False,
         recommendations=False,
         scheduled_runs=False,
         max_providers=1,
+        auto_generate_prompts=False,  # Disabled for free plan
+        max_runs_per_week=1,  # 1 run per week
     ),
     "starter": PlanLimits(
-        max_brands=1,
-        pdf_export=True,
-        recommendations=True,
-        scheduled_runs=True,
-        max_providers=2,
-    ),
-    "pro": PlanLimits(
         max_brands=5,
         pdf_export=True,
         recommendations=True,
         scheduled_runs=True,
+        max_providers=2,
+        auto_generate_prompts=True,
+        max_runs_per_week=-1,  # unlimited
+    ),
+    "pro": PlanLimits(
+        max_brands=10,
+        pdf_export=True,
+        recommendations=True,
+        scheduled_runs=True,
         max_providers=-1,
+        auto_generate_prompts=True,
+        max_runs_per_week=-1,  # unlimited
     ),
     "agency": PlanLimits(
         max_brands=-1,
@@ -46,6 +56,8 @@ _LIMITS: dict[str, PlanLimits] = {
         recommendations=True,
         scheduled_runs=True,
         max_providers=-1,
+        auto_generate_prompts=True,
+        max_runs_per_week=-1,  # unlimited
     ),
 }
 
@@ -101,3 +113,42 @@ def plan_display(plan: str | None, trial_ends_at: datetime | None) -> dict:
         "is_trial": ep == "trial",
         "trial_days_remaining": days,
     }
+
+
+def can_run(org: "Organization", db: Session) -> tuple[bool, str | None]:
+    """Check if the organization can run new prompts.
+
+    Returns (can_run, reason) tuple.
+    - During trial: always allowed
+    - After trial on free plan: blocked
+    - Weekly limit check for free plan
+    """
+    from app.models import Brand, Organization, PromptRun
+    from datetime import timedelta
+
+    ep = effective_plan(org.plan, org.trial_ends_at)
+    limits = get_limits(org.plan, org.trial_ends_at)
+
+    # Trial users can always run
+    if ep == "trial":
+        return True, None
+
+    # Free plan users cannot run after trial expires
+    if ep == "free":
+        return False, "Votre période d'essai est terminée. Veuillez souscrire à un abonnement pour continuer à lancer des RUNs."
+
+    # Check weekly limit for paid plans with limits
+    if limits.max_runs_per_week >= 0:
+        # Count runs in the last 7 days
+        week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+        run_count = db.query(PromptRun).filter(
+            PromptRun.brand_id.in_(
+                db.query(Brand.id).filter(Brand.organization_id == org.id)
+            ),
+            PromptRun.created_at >= week_ago,
+        ).count()
+
+        if run_count >= limits.max_runs_per_week:
+            return False, f"Vous avez atteint votre limite de {limits.max_runs_per_week} RUN(s) par semaine."
+
+    return True, None

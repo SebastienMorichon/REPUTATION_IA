@@ -304,7 +304,7 @@ export default function ReportsPage() {
             <div>
               <div
                 className="label"
-                style={{ color: "rgba(228,226,220,0.45)" }}
+                style={{ color: "var(--muted)" }}
               >
                 Visibilité IA moyenne — toutes vos marques
               </div>
@@ -314,7 +314,7 @@ export default function ReportsPage() {
               >
                 {Math.round(globalVisibility)} %
               </div>
-              <div className="mt-1 text-xs" style={{ color: "rgba(197,242,54,0.6)" }}>
+              <div className="mt-1 text-xs" style={{ color: "var(--muted)" }}>
                 sur {days === 7 ? "7 jours" : days === 30 ? "30 jours" : "3 mois"}{" "}
                 · {brandsWithData.length} marque
                 {brandsWithData.length > 1 ? "s" : ""} avec données
@@ -323,7 +323,7 @@ export default function ReportsPage() {
           </div>
           <p
             className="mt-4 max-w-lg text-sm leading-relaxed"
-            style={{ color: "rgba(228,226,220,0.55)" }}
+            style={{ color: "var(--muted)" }}
           >
             En moyenne, les IA citent votre marque dans{" "}
             <strong style={{ color: "var(--feat-text)" }}>

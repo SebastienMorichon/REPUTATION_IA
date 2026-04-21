@@ -33,5 +33,10 @@ celery_app.conf.update(
             "task": "reputation.send_daily_alert_emails",
             "schedule": crontab(minute=0, hour=8),
         },
+        # Generate editorial articles every Monday at 09:00 UTC
+        "weekly-editorial-articles": {
+            "task": "reputation.generate_weekly_articles",
+            "schedule": crontab(minute=0, hour=9, day_of_week=1),
+        },
     },
 )

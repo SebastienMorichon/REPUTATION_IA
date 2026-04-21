@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.database import Base, engine
-from app.routers import admin, alerts, auth, billing, brands, prompts, providers, reports, runs, scores
+from app.routers import admin, alerts, auth, billing, brands, content, prompts, providers, reports, runs, scores
 
 settings = get_settings()
 
@@ -50,6 +50,7 @@ def create_app() -> FastAPI:
     app.include_router(providers.router)
     app.include_router(billing.router)
     app.include_router(admin.router)
+    app.include_router(content.router)
 
     return app
 

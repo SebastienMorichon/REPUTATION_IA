@@ -62,6 +62,7 @@ class PerplexityProvider(LLMProvider):
         system: str | None = None,
         max_tokens: int = 1024,
         temperature: float = 0.2,
+        use_web_search: bool = False,
     ) -> LLMResponse:
         client = self._require_client()
         model_id = model or self.default_model

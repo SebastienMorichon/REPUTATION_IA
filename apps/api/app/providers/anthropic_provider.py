@@ -4,7 +4,7 @@ import json
 import time
 from typing import Any
 
-from anthropic import Anthropic
+from anthropic import Anthropic, BadRequestError
 
 from app.config import get_settings
 from app.providers.base import LLMProvider, LLMResponse
@@ -40,21 +40,58 @@ class AnthropicProvider(LLMProvider):
         system: str | None = None,
         max_tokens: int = 1024,
         temperature: float = 0.2,
+        use_web_search: bool = False,
     ) -> LLMResponse:
         client = self._require_client()
         model_id = model or self.default_model
         start = time.perf_counter()
-        resp = client.messages.create(
+
+        # Build tools list with web_search if enabled
+        # allowed_callers=["direct"] is required for models that don't support
+        # programmatic tool calling (e.g. claude-sonnet-4-20250514)
+        tools = []
+        if use_web_search:
+            tools.append({
+                "type": "web_search_20260209",
+                "name": "web_search",
+                "max_uses": 5,
+                "allowed_callers": ["direct"],
+            })
+
+        kwargs: dict = dict(
             model=model_id,
             max_tokens=max_tokens,
             temperature=temperature,
             system=system or "",
             messages=[{"role": "user", "content": prompt}],
         )
+        if tools:  # omit entirely when empty — some models reject tools=None/[]
+            kwargs["tools"] = tools
+        try:
+            resp = client.messages.create(**kwargs)
+        except BadRequestError as e:
+            # Newer Claude 4 models (e.g. claude-opus-4-7) deprecate temperature
+            if "temperature" in str(e) and "deprecated" in str(e):
+                kwargs.pop("temperature", None)
+                resp = client.messages.create(**kwargs)
+            else:
+                raise
         latency_ms = int((time.perf_counter() - start) * 1000)
 
         text_parts = [block.text for block in resp.content if getattr(block, "type", None) == "text"]
         text = "\n".join(text_parts).strip()
+
+        # Extract web search citations if available
+        citations_from_search = []
+        for block in resp.content:
+            if getattr(block, "type", None) == "text" and getattr(block, "citations", None):
+                for cit in block.citations:
+                    if getattr(cit, "type", None) == "web_search_result_location":
+                        citations_from_search.append({
+                            "url": getattr(cit, "url", None),
+                            "title": getattr(cit, "title", None),
+                            "cited_text": getattr(cit, "cited_text", None),
+                        })
 
         return LLMResponse(
             text=text,
@@ -63,7 +100,12 @@ class AnthropicProvider(LLMProvider):
             latency_ms=latency_ms,
             input_tokens=getattr(resp.usage, "input_tokens", None),
             output_tokens=getattr(resp.usage, "output_tokens", None),
-            raw={"id": resp.id, "stop_reason": resp.stop_reason},
+            raw={
+                "id": resp.id,
+                "stop_reason": resp.stop_reason,
+                "web_search_requests": getattr(getattr(resp.usage, "server_tool_use", None), "web_search_requests", 0),
+                "web_citations": citations_from_search,
+            },
         )
 
     def generate_structured(
@@ -87,7 +129,7 @@ class AnthropicProvider(LLMProvider):
             "input_schema": json_schema,
         }
 
-        resp = client.messages.create(
+        kwargs_s: dict = dict(
             model=model_id,
             max_tokens=max_tokens,
             temperature=temperature,
@@ -96,6 +138,14 @@ class AnthropicProvider(LLMProvider):
             tool_choice={"type": "tool", "name": schema_name},
             messages=[{"role": "user", "content": prompt}],
         )
+        try:
+            resp = client.messages.create(**kwargs_s)
+        except BadRequestError as e:
+            if "temperature" in str(e) and "deprecated" in str(e):
+                kwargs_s.pop("temperature", None)
+                resp = client.messages.create(**kwargs_s)
+            else:
+                raise
 
         for block in resp.content:
             if getattr(block, "type", None) == "tool_use" and block.name == schema_name:

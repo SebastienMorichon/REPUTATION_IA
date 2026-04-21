@@ -57,7 +57,7 @@ export default function UsagePage() {
           {[7, 30, 90].map((d) => (
             <button key={d} onClick={() => setDays(d)}
               className="rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
-              style={days === d ? { background: "var(--sidebar)", color: "#E4E2DC" } : { background: "var(--border)", color: "var(--muted)" }}>
+              style={days === d ? { background: "var(--accent)", color: "var(--accent-fg)" } : { background: "var(--border)", color: "var(--muted)" }}>
               {d === 7 ? "7j" : d === 30 ? "30j" : "90j"}
             </button>
           ))}
@@ -74,7 +74,7 @@ export default function UsagePage() {
                 {(["hour","day","month"] as const).map((g) => (
                   <button key={g} onClick={() => setGran(g)}
                     className="rounded-lg px-3 py-1 text-xs font-medium transition-colors"
-                    style={gran === g ? { background: "var(--sidebar)", color: "#E4E2DC" } : { background: "var(--border)", color: "var(--muted)" }}>
+                    style={gran === g ? { background: "var(--accent)", color: "var(--accent-fg)" } : { background: "var(--border)", color: "var(--muted)" }}>
                     {g === "hour" ? "Heure" : g === "day" ? "Jour" : "Mois"}
                   </button>
                 ))}

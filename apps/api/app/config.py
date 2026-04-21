@@ -48,15 +48,20 @@ class Settings(BaseSettings):
     openai_default_model: str = Field(
         default="gpt-4o-mini", alias="OPENAI_DEFAULT_MODEL"
     )
+    # Modèle avec recherche web native (pour use_web_search=True)
+    # Modèles supportant web_search: gpt-4.1-mini, gpt-4.1-nano, gpt-4o-mini, gpt-4o
+    openai_search_model: str = Field(
+        default="gpt-4.1-mini", alias="OPENAI_SEARCH_MODEL"
+    )
 
     anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
     anthropic_enabled: bool = Field(default=True, alias="ANTHROPIC_ENABLED")
     anthropic_default_model: str = Field(
-        default="claude-sonnet-4-6", alias="ANTHROPIC_DEFAULT_MODEL"
+        default="claude-sonnet-4-20250514", alias="ANTHROPIC_DEFAULT_MODEL"
     )
 
     analyzer_provider: str = Field(default="anthropic", alias="ANALYZER_PROVIDER")
-    analyzer_model: str = Field(default="claude-sonnet-4-6", alias="ANALYZER_MODEL")
+    analyzer_model: str = Field(default="claude-sonnet-4-20250514", alias="ANALYZER_MODEL")
 
     # Perplexity (online / web-augmented LLM)
     perplexity_api_key: str = Field(default="", alias="PERPLEXITY_API_KEY")
@@ -82,6 +87,14 @@ class Settings(BaseSettings):
     stripe_starter_price_id: str = Field(default="", alias="STRIPE_STARTER_PRICE_ID")
     stripe_pro_price_id: str = Field(default="", alias="STRIPE_PRO_PRICE_ID")
     stripe_agency_price_id: str = Field(default="", alias="STRIPE_AGENCY_PRICE_ID")
+
+    # LinkedIn — leave empty to use mock/draft-only mode
+    linkedin_access_token: str = Field(default="", alias="LINKEDIN_ACCESS_TOKEN")
+    linkedin_person_urn: str = Field(default="", alias="LINKEDIN_PERSON_URN")
+    linkedin_enabled: bool = Field(default=False, alias="LINKEDIN_ENABLED")
+
+    # Tavily — web search API for LLM providers without native web search
+    tavily_api_key: str = Field(default="", alias="TAVILY_API_KEY")
 
 
 @lru_cache

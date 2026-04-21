@@ -31,7 +31,7 @@
   --bad:        #DC2626;   /* rouge erreur */
 
   /* Tuile KPI "featured" — s'adapte au thème */
-  --feat:       #18171A;   /* fond sombre en thème clair pour contraste */
+  --feat:       #ECEBF8;   /* fond accent très léger, cohérent avec la palette Pearl */
   --feat-text:  #4F46E5;   /* texte en couleur accent */
 
   /* ── Sidebar-specific — s'adapte au thème ────────────────── */
@@ -169,7 +169,7 @@ html, body {
 }
 
 .card-feat {
-  @apply bg-feat rounded-2xl p-5;
+  @apply bg-feat rounded-2xl p-5 border border-border;
 }
 
 .btn {

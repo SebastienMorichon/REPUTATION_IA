@@ -143,7 +143,7 @@ export default function AdminPage() {
             {(["hour", "day", "month"] as const).map((g) => (
               <button key={g} onClick={() => setGran(g)}
                 className="rounded-lg px-3 py-1 text-xs font-medium transition-colors"
-                style={gran === g ? { background: "var(--sidebar)", color: "#E4E2DC" } : { background: "var(--border)", color: "var(--muted)" }}>
+                style={gran === g ? { background: "var(--accent)", color: "var(--accent-fg)" } : { background: "var(--border)", color: "var(--muted)" }}>
                 {g === "hour" ? "Heure" : g === "day" ? "Jour" : "Mois"}
               </button>
             ))}

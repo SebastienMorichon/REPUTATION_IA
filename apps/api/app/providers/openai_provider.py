@@ -20,6 +20,7 @@ class OpenAIProvider(LLMProvider):
         api_key = get_config("provider.openai.api_key") or s.openai_api_key or ""
         self._enabled = get_config_bool("provider.openai.enabled", bool(s.openai_enabled))
         self.default_model = get_config("provider.openai.model") or s.openai_default_model
+        self.search_model = get_config("provider.openai.search_model") or s.openai_search_model
         self._api_key = api_key
         self._client = OpenAI(api_key=api_key) if api_key else None
 
@@ -39,8 +40,54 @@ class OpenAIProvider(LLMProvider):
         system: str | None = None,
         max_tokens: int = 1024,
         temperature: float = 0.2,
+        use_web_search: bool = False,
     ) -> LLMResponse:
         client = self._require_client()
+
+        # Use Responses API for web search (only API that supports it)
+        if use_web_search:
+            # gpt-5 (exact) is a reasoning model that returns reasoning items, not text.
+            # gpt-5.1+ and other variants work fine — only the bare "gpt-5" needs a fallback.
+            model_id = self.search_model
+            if model_id.strip().lower() == "gpt-5":
+                model_id = "gpt-4o-mini"
+
+            start = time.perf_counter()
+
+            resp = client.responses.create(
+                model=model_id,
+                input=prompt,
+                tools=[{"type": "web_search_preview"}],  # correct tool type for Responses API
+                max_output_tokens=max_tokens,
+                # temperature is not supported by the Responses API
+            )
+            latency_ms = int((time.perf_counter() - start) * 1000)
+
+            # Primary: use the SDK's output_text convenience property
+            text = getattr(resp, "output_text", None) or ""
+
+            # Fallback: iterate output items
+            if not text and hasattr(resp, "output") and resp.output:
+                for item in resp.output:
+                    if hasattr(item, "content") and item.content:
+                        for content_item in item.content:
+                            t = getattr(content_item, "text", None)
+                            if t:
+                                text += t
+
+            usage = getattr(resp, "usage", None)
+
+            return LLMResponse(
+                text=text.strip(),
+                model=model_id,
+                provider=self.name,
+                latency_ms=latency_ms,
+                input_tokens=getattr(usage, "input_tokens", None) if usage else None,
+                output_tokens=getattr(usage, "output_tokens", None) if usage else None,
+                raw={"id": getattr(resp, "id", None)},
+            )
+
+        # Standard Chat Completions API (no web search)
         model_id = model or self.default_model
         messages = []
         if system:

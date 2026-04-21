@@ -4,11 +4,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import desc
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.deps import brand_for_user, current_user
 from app.models import Prompt, PromptRun, User
+from app.plan_limits import can_run
 from app.providers import list_enabled_providers
 from app.schemas import PromptRunRead, RunRequest
 
@@ -28,6 +29,7 @@ def list_runs(
         .filter(PromptRun.brand_id == brand_id)
         .order_by(desc(PromptRun.created_at))
         .limit(limit)
+        .options(joinedload(PromptRun.prompt))
         .all()
     )
 
@@ -54,6 +56,12 @@ def trigger_runs(
     db: Session = Depends(get_db),
 ) -> list[PromptRun]:
     brand = brand_for_user(brand_id, user, db)
+    org = brand.organization
+
+    # Check if organization can run prompts
+    allowed, reason = can_run(org, db)
+    if not allowed:
+        raise HTTPException(status_code=403, detail=reason)
 
     # Select prompts
     q = db.query(Prompt).filter(Prompt.brand_id == brand.id, Prompt.enabled == True)  # noqa: E712

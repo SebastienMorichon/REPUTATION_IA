@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { AuthGate } from "@/components/AuthGate";
 import { Sidebar } from "@/components/Sidebar";
+import { Header } from "@/components/Header";
 import { TrialBanner } from "@/components/TrialBanner";
 import { apiFetch, type BillingSubscription } from "@/lib/api";
 import type { ReactNode } from "react";
@@ -21,6 +22,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       <div className="flex h-screen overflow-hidden">
         <Sidebar />
         <div className="flex flex-1 flex-col overflow-hidden">
+          <Header />
           {subscription?.is_trial && subscription.trial_days_remaining !== null && (
             <TrialBanner daysRemaining={subscription.trial_days_remaining} />
           )}

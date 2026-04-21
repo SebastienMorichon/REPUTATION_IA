@@ -120,6 +120,7 @@ class Prompt(Base, TimestampMixin):
     intent: Mapped[str | None] = mapped_column(String(64), nullable=True)
     importance: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    use_web_search: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     brand: Mapped[Brand] = relationship(back_populates="prompts")
     runs: Mapped[list[PromptRun]] = relationship(back_populates="prompt", cascade="all, delete-orphan")
@@ -238,3 +239,50 @@ class ScoreSnapshot(Base, TimestampMixin):
     citation_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     runs_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     details: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+
+
+class Article(Base, TimestampMixin):
+    """Automated editorial article produced by the 4-agent pipeline.
+
+    Status lifecycle: idea → drafting → draft → review → approved → published | failed
+    """
+    __tablename__ = "articles"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # Optional brand association — article can be generic or brand-specific
+    brand_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("brands.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    # Pipeline status
+    status: Mapped[str] = mapped_column(String(32), default="idea", nullable=False, index=True)
+
+    # Agent 1 — Brief (topic, angle, audience, keyword, outline, sources, …)
+    brief: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+
+    # Agent 2 — Draft content
+    title: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    slug: Mapped[str | None] = mapped_column(String(512), nullable=True, unique=True)
+    excerpt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content_markdown: Mapped[str | None] = mapped_column(Text, nullable=True)
+    seo_title: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    seo_description: Mapped[str | None] = mapped_column(String(512), nullable=True)
+
+    # Agent 3 — Editorial review scores / notes
+    review: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+
+    # Agent 4 — LinkedIn post variants
+    linkedin_variants: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+
+    # Publication metadata
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    linkedin_post_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+
+    # Error tracking
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    organization: Mapped[Organization] = relationship()
+    brand: Mapped[Brand | None] = relationship()

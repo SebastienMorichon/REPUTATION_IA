@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { apiFetch, setToken, type AuthResponse } from "@/lib/api";
+import { apiFetch, setToken, setUser, type AuthResponse } from "@/lib/api";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -29,6 +29,7 @@ export default function SignupPage() {
         }),
       });
       setToken(res.access_token);
+      setUser(res.user);
       router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur lors de la création");

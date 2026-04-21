@@ -3,28 +3,59 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { clearToken, apiFetch, type BillingSubscription } from "@/lib/api";
+import { clearToken, clearUser, getUser, apiFetch, type BillingSubscription } from "@/lib/api";
 import { ThemeToggle } from "./ThemeToggle";
 import type { Brand } from "@/lib/api";
 
-const GROUPS = [
-  {
-    label: "Monitoring",
-    links: [
-      { href: "/dashboard", label: "Dashboard", exact: true },
-      { href: "/dashboard/brands", label: "Marques" },
-    ],
-  },
-  {
-    label: "Insights",
-    links: [
-      { href: "/dashboard/alerts", label: "Alertes" },
-      { href: "/dashboard/reports", label: "Rapports" },
-      { href: "/dashboard/billing", label: "💳 Abonnement" },
-      { href: "/dashboard/settings", label: "⚙️ Paramètres" },
-    ],
-  },
-];
+function buildGroups(isAdmin: boolean) {
+  const groups = [
+    {
+      label: "Monitoring",
+      links: [
+        { href: "/dashboard", label: "Dashboard", exact: true },
+        { href: "/dashboard/brands", label: "Marques" },
+      ],
+    },
+    {
+      label: "Insights",
+      links: [
+        { href: "/dashboard/alerts", label: "Alertes" },
+        { href: "/dashboard/reports", label: "Rapports" },
+      ],
+    },
+    {
+      label: "Ressources",
+      links: [
+        { href: "/blog", label: "📖 Blog" },
+      ],
+    },
+    ...(isAdmin
+      ? [
+          {
+            label: "Contenu",
+            links: [{ href: "/dashboard/content", label: "✍️ Articles" }],
+          },
+          {
+            label: "Administration",
+            links: [
+              { href: "/admin", label: "📊 Vue globale", exact: true },
+              { href: "/admin/customers", label: "👥 Clients" },
+              { href: "/admin/usage", label: "📈 Usage" },
+              { href: "/admin/settings", label: "⚙️ Config plateforme" },
+            ],
+          },
+        ]
+      : []),
+    {
+      label: "Compte",
+      links: [
+        { href: "/dashboard/billing", label: "💳 Abonnement" },
+        { href: "/dashboard/settings", label: "⚙️ Paramètres" },
+      ],
+    },
+  ];
+  return groups;
+}
 
 interface Props {
   activeBrand?: Brand | null;
@@ -34,8 +65,13 @@ export function Sidebar({ activeBrand }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const [subscription, setSubscription] = useState<BillingSubscription | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
+    // Read admin status from localStorage (set at login/signup via /auth/me)
+    const user = getUser();
+    setIsAdmin(user?.is_admin ?? false);
+
     apiFetch<BillingSubscription>("/billing/subscription")
       .then(setSubscription)
       .catch(() => {}); // silent fail
@@ -67,7 +103,7 @@ export function Sidebar({ activeBrand }: Props) {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-3 pb-4">
-        {GROUPS.map((group) => (
+        {buildGroups(isAdmin).map((group) => (
           <div key={group.label} className="mb-5">
             <p
               className="mb-1.5 px-3 text-[10px] font-medium uppercase tracking-[0.12em]"
@@ -141,7 +177,7 @@ export function Sidebar({ activeBrand }: Props) {
       >
         <ThemeToggle />
         <button
-          onClick={() => { clearToken(); router.push("/login"); }}
+          onClick={() => { clearToken(); clearUser(); router.push("/login"); }}
           className="text-[11px] transition-colors hover:text-white"
           style={{ color: "var(--sidebar-muted)" }}
         >

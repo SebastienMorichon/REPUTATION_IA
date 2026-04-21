@@ -21,11 +21,13 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
+from datetime import datetime, timedelta, timezone
+
 from app.config import get_settings
 from app.database import get_db
 from app.deps import current_user
-from app.models import Organization, User
-from app.plan_limits import effective_plan, get_limits, plan_display, trial_days_remaining
+from app.models import Brand, Organization, PromptRun, User
+from app.plan_limits import can_run, effective_plan, get_limits, plan_display, trial_days_remaining
 
 log = logging.getLogger(__name__)
 
@@ -58,11 +60,28 @@ def get_subscription(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Return the current billing plan and trial info for the user's organisation."""
+    """Return the current billing plan, trial info, and quota usage."""
     org = db.get(Organization, user.organization_id)
     display = plan_display(org.plan, org.trial_ends_at)
     limits = get_limits(org.plan, org.trial_ends_at)
     ep = display["effective_plan"]
+
+    # ── Quota usage: runs this week ───────────────────────────────
+    week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+    runs_this_week = (
+        db.query(PromptRun)
+        .filter(
+            PromptRun.brand_id.in_(
+                db.query(Brand.id).filter(Brand.organization_id == org.id)
+            ),
+            PromptRun.created_at >= week_ago,
+        )
+        .count()
+    )
+    max_runs = limits.max_runs_per_week
+    runs_remaining = None if max_runs == -1 else max(0, max_runs - runs_this_week)
+    can_run_now, block_reason = can_run(org, db)
+
     return {
         # Raw / stored plan
         "plan": org.plan or "free",
@@ -82,6 +101,15 @@ def get_subscription(
             "pdf_export": limits.pdf_export,
             "recommendations": limits.recommendations,
             "scheduled_runs": limits.scheduled_runs,
+            "auto_generate_prompts": limits.auto_generate_prompts,
+            "max_runs_per_week": max_runs,
+        },
+        # Quota usage
+        "quota": {
+            "runs_this_week": runs_this_week,
+            "runs_remaining": runs_remaining,       # null = unlimited
+            "can_run": can_run_now,
+            "block_reason": block_reason,           # null if can run
         },
     }
 

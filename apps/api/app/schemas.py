@@ -37,6 +37,7 @@ class UserRead(ORMModel):
     email: EmailStr
     full_name: str | None
     organization_id: uuid.UUID
+    is_admin: bool = False
 
 
 # ---------- Brand / competitors / prompts ----------
@@ -97,6 +98,16 @@ class PromptCreate(BaseModel):
     intent: str | None = None
     importance: int = 1
     enabled: bool = True
+    use_web_search: bool = False
+
+
+class PromptUpdate(BaseModel):
+    text: str | None = None
+    language: str | None = None
+    intent: str | None = None
+    importance: int | None = None
+    enabled: bool | None = None
+    use_web_search: bool | None = None
 
 
 class PromptRead(ORMModel):
@@ -107,6 +118,7 @@ class PromptRead(ORMModel):
     intent: str | None
     importance: int
     enabled: bool
+    use_web_search: bool = False
     created_at: datetime
 
 
@@ -141,6 +153,18 @@ class CitationRead(ORMModel):
     refers_to_target: bool
 
 
+class PromptRead(ORMModel):
+    id: uuid.UUID
+    brand_id: uuid.UUID
+    text: str
+    language: str | None
+    intent: str | None
+    importance: int
+    enabled: bool
+    use_web_search: bool = False
+    created_at: datetime
+
+
 class PromptRunRead(ORMModel):
     id: uuid.UUID
     prompt_id: uuid.UUID
@@ -158,6 +182,7 @@ class PromptRunRead(ORMModel):
     created_at: datetime
     mentions: list[MentionRead] = []
     citations: list[CitationRead] = []
+    prompt: PromptRead | None = None
 
 
 class ScoreSnapshotRead(ORMModel):
@@ -173,3 +198,45 @@ class ScoreSnapshotRead(ORMModel):
 
 
 TokenResponse.model_rebuild()
+
+
+# ---------- Editorial content ----------
+
+
+class ArticleListItem(ORMModel):
+    id: uuid.UUID
+    organization_id: uuid.UUID
+    brand_id: uuid.UUID | None
+    status: str
+    title: str | None
+    slug: str | None
+    excerpt: str | None
+    published_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ArticleRead(ORMModel):
+    id: uuid.UUID
+    organization_id: uuid.UUID
+    brand_id: uuid.UUID | None
+    status: str
+    title: str | None
+    slug: str | None
+    excerpt: str | None
+    content_markdown: str | None
+    seo_title: str | None
+    seo_description: str | None
+    brief: dict[str, Any] | None
+    review: dict[str, Any] | None
+    linkedin_variants: dict[str, Any] | None
+    published_at: datetime | None
+    linkedin_post_url: str | None
+    error: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ArticleGenerateRequest(BaseModel):
+    brand_id: uuid.UUID | None = None
+    topic_hint: str | None = None   # optional guidance for Agent 1

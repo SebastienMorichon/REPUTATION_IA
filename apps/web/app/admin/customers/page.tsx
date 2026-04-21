@@ -48,6 +48,8 @@ export default function CustomersPage() {
   const [editPlan, setEditPlan] = useState("");
   const [editTrial, setEditTrial] = useState("");
   const [saving,   setSaving]   = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
 
   const load = () => {
@@ -64,16 +66,50 @@ export default function CustomersPage() {
     return matchSearch && matchPlan;
   });
 
-  async function saveEdit(orgId: string) {
+  function applyOrgUpdate(updated: Org) {
+    setOrgs((prev) => prev.map((o) => o.id === updated.id ? { ...o, ...updated } : o));
+  }
+
+  async function saveEdit(orgId: string, extraBody: Record<string, unknown> = {}) {
     setSaving(true);
+    setSaveError(null);
+    setSaveSuccess(null);
     try {
-      const body: Record<string, unknown> = {};
+      const body: Record<string, unknown> = { ...extraBody };
       if (editPlan) body.plan = editPlan;
       if (editTrial) body.trial_ends_at = new Date(editTrial).toISOString();
-      await apiFetch(`/admin/organizations/${orgId}`, { method: "PATCH", body: JSON.stringify(body) });
+      const updated = await apiFetch<Org>(`/admin/organizations/${orgId}`, { method: "PATCH", body: JSON.stringify(body) });
+      applyOrgUpdate(updated);          // mise à jour immédiate dans la liste
       setEditing(null);
-      load();
-    } finally { setSaving(false); }
+      setSaveSuccess("Modifications enregistrées ✓");
+      setTimeout(() => setSaveSuccess(null), 3000);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Erreur lors de la sauvegarde";
+      setSaveError(msg);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function revokeTrialAndSetPlan(orgId: string, plan: string) {
+    setSaving(true);
+    setSaveError(null);
+    setSaveSuccess(null);
+    try {
+      const updated = await apiFetch<Org>(`/admin/organizations/${orgId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ plan, clear_trial: true }),
+      });
+      applyOrgUpdate(updated);          // mise à jour immédiate dans la liste
+      setEditing(null);
+      setSaveSuccess(`Plan ${PLAN_LBL[plan] ?? plan} activé, essai terminé ✓`);
+      setTimeout(() => setSaveSuccess(null), 3000);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Erreur";
+      setSaveError(msg);
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function deleteOrg(org: Org) {
@@ -169,12 +205,14 @@ export default function CustomersPage() {
                   {/* Edit panel */}
                   {editing === org.id && (
                     <tr key={`edit-${org.id}`} className="border-b border-border bg-card">
-                      <td colSpan={7} className="px-6 py-4">
+                      <td colSpan={7} className="px-6 py-5">
+
+                        {/* ── Section 1 : plan + essai ───────────────── */}
                         <div className="flex flex-wrap items-end gap-4">
                           <div>
                             <label className="label mb-1 block">Plan</label>
                             <select value={editPlan} onChange={(e) => setEditPlan(e.target.value)}
-                              className="rounded-lg border border-border bg-bg px-3 py-1.5 text-sm text-text focus:outline-none">
+                              className="rounded-lg border border-border bg-bg px-3 py-1.5 text-sm text-text focus:outline-none focus:ring-1 focus:ring-accent">
                               {["free","starter","pro","agency"].map((p) => (
                                 <option key={p} value={p}>{PLAN_LBL[p]}</option>
                               ))}
@@ -183,7 +221,7 @@ export default function CustomersPage() {
                           <div>
                             <label className="label mb-1 block">Prolonger essai jusqu'au</label>
                             <input type="date" value={editTrial} onChange={(e) => setEditTrial(e.target.value)}
-                              className="rounded-lg border border-border bg-bg px-3 py-1.5 text-sm text-text focus:outline-none" />
+                              className="rounded-lg border border-border bg-bg px-3 py-1.5 text-sm text-text focus:outline-none focus:ring-1 focus:ring-accent" />
                           </div>
                           <div className="flex gap-2">
                             {["+7j", "+14j", "+30j"].map((label) => {
@@ -193,18 +231,60 @@ export default function CustomersPage() {
                                   const d = new Date(); d.setDate(d.getDate() + days);
                                   setEditTrial(d.toISOString().slice(0, 10));
                                 }}
-                                  className="rounded-lg border border-border bg-bg px-2 py-1.5 text-xs text-muted hover:text-text">
+                                  className="rounded-lg border border-border bg-bg px-2 py-1.5 text-xs text-muted hover:text-text transition-colors">
                                   {label}
                                 </button>
                               );
                             })}
                           </div>
                           <button onClick={() => saveEdit(org.id)} disabled={saving}
-                            className="rounded-lg bg-sidebar px-4 py-1.5 text-sm font-medium text-accent disabled:opacity-50">
+                            className="rounded-lg bg-accent px-4 py-1.5 text-sm font-semibold text-accent-fg disabled:opacity-50 hover:opacity-90 transition-opacity">
                             {saving ? "Enregistrement…" : "Sauvegarder"}
                           </button>
-                          <button onClick={() => setEditing(null)} className="text-xs text-muted hover:text-text">Annuler</button>
+                          <button onClick={() => { setEditing(null); setSaveError(null); setSaveSuccess(null); }}
+                            className="text-xs text-muted hover:text-text transition-colors">
+                            Annuler
+                          </button>
                         </div>
+
+                        {/* ── Section 2 : activation plan payant (si essai actif) ── */}
+                        {org.is_trial && (
+                          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-bg px-4 py-3">
+                            <span className="text-xs text-muted">
+                              Essai actif ({org.trial_days_remaining}j restants) — activer un plan payant immédiatement :
+                            </span>
+                            {["starter","pro","agency"].map((p) => (
+                              <button
+                                key={p}
+                                onClick={() => revokeTrialAndSetPlan(org.id, p)}
+                                disabled={saving}
+                                className="rounded-lg border border-border px-3 py-1 text-xs font-semibold transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
+                                style={{ color: PLAN_FG[p] ?? "var(--accent)", borderColor: PLAN_FG[p] ?? "var(--border)" }}
+                              >
+                                → {PLAN_LBL[p]}
+                              </button>
+                            ))}
+                            <button
+                              onClick={() => revokeTrialAndSetPlan(org.id, "free")}
+                              disabled={saving}
+                              className="rounded-lg border border-border px-3 py-1 text-xs text-muted transition-colors hover:text-bad hover:border-bad disabled:opacity-50"
+                            >
+                              Terminer l&apos;essai (→ Gratuit)
+                            </button>
+                          </div>
+                        )}
+
+                        {/* ── Feedback ───────────────────────────────── */}
+                        {saveError && (
+                          <p className="mt-3 text-xs font-medium" style={{ color: "var(--bad)" }}>
+                            ✗ {saveError}
+                          </p>
+                        )}
+                        {saveSuccess && (
+                          <p className="mt-3 text-xs font-medium" style={{ color: "var(--good)" }}>
+                            {saveSuccess}
+                          </p>
+                        )}
                       </td>
                     </tr>
                   )}
@@ -220,7 +300,7 @@ export default function CustomersPage() {
                               <div key={u.id} className="flex items-center gap-2 py-1 text-xs">
                                 <span className="text-text">{u.email}</span>
                                 {u.full_name && <span className="text-muted">({u.full_name})</span>}
-                                {u.is_admin && <span className="rounded bg-accent px-1 text-[10px] font-bold" style={{ color: "#1C1C1A" }}>ADMIN</span>}
+                                {u.is_admin && <span className="rounded bg-accent px-1 text-[10px] font-bold text-accent-fg">ADMIN</span>}
                               </div>
                             ))}
                           </div>

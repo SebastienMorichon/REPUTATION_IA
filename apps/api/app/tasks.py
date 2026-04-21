@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.analyzer import analyze_response
 from app.database import SessionLocal
-from app.models import Brand, Citation, Mention, Prompt, PromptRun, ScoreSnapshot
+from app.models import Article, Brand, Citation, Mention, Prompt, PromptRun, ScoreSnapshot
 from app.providers import get_provider, list_enabled_providers
 from app.scoring import compute_scores
 from app.worker import celery_app
@@ -16,10 +16,6 @@ from app.worker import celery_app
 log = logging.getLogger(__name__)
 
 
-SYSTEM_FOR_OBSERVATION = (
-    "You are a helpful assistant answering a real user's question. "
-    "Respond naturally as you normally would, including citing sources or tools when relevant."
-)
 
 
 @celery_app.task(name="reputation.run_prompt", bind=True, max_retries=2, default_retry_delay=30)
@@ -41,13 +37,23 @@ def run_prompt(self, prompt_run_id: str) -> dict:
             db.add(run)
             db.commit()
 
+            # Check if web search is allowed (Pro+ plans only)
+            use_web_search = False
+            if prompt.use_web_search:
+                from app.plan_limits import effective_plan, get_limits
+                org_plan = effective_plan(brand.organization.plan, brand.organization.trial_ends_at)
+                limits = get_limits(brand.organization.plan, brand.organization.trial_ends_at)
+                # Only Pro and Agency plans can use web search
+                if org_plan in ("pro", "agency", "trial"):
+                    use_web_search = True
+
             provider = get_provider(run.provider)
             llm_response = provider.generate(
                 prompt=prompt.text,
                 model=run.model,
-                system=SYSTEM_FOR_OBSERVATION,
                 max_tokens=1024,
-                temperature=0.3,
+                temperature=0.7,
+                use_web_search=use_web_search,
             )
 
             run.raw_response = llm_response.text
@@ -411,5 +417,194 @@ def send_daily_alert_emails() -> dict:
                 log.exception("Failed to send alert email for brand '%s'", brand.name)
 
         return {"brands_checked": len(brands), "emails_sent": emails_sent}
+    finally:
+        db.close()
+
+
+# ── Editorial pipeline tasks ───────────────────────────────────────────────────
+
+
+@celery_app.task(name="reputation.run_article_pipeline", bind=True, max_retries=1, default_retry_delay=60)
+def run_article_pipeline(self, article_id: str) -> dict:
+    """Run the full 4-agent editorial pipeline for a single article.
+
+    Flow: brief → draft → review → auto-approve if quality ≥ 70 → linkedin variants
+    """
+    from app.editorial.agents import (
+        run_brief_agent,
+        run_draft_agent,
+        run_linkedin_agent,
+        run_review_agent,
+    )
+
+    db: Session = SessionLocal()
+    try:
+        from uuid import UUID as _UUID
+        article: Article | None = db.get(Article, _UUID(article_id))
+        if article is None:
+            return {"error": f"Article {article_id} not found"}
+
+        brand = db.get(Brand, article.brand_id) if article.brand_id else None
+        org = article.organization
+
+        # Extract topic_hint stored by the router, if any
+        topic_hint: str | None = None
+        if article.brief and isinstance(article.brief, dict):
+            topic_hint = article.brief.get("topic_hint")
+
+        try:
+            # ── Agent 1: Brief ────────────────────────────────────────────────
+            article.status = "drafting"
+            db.commit()
+
+            brief = run_brief_agent(brand=brand, organization=org, topic_hint=topic_hint)
+            article.brief = brief
+            db.commit()
+
+            # ── Agent 2: Draft ────────────────────────────────────────────────
+            draft = run_draft_agent(brief=brief, brand=brand)
+
+            # Ensure slug uniqueness by appending short UUID suffix if taken
+            slug: str = draft.get("slug", "")
+            existing = db.query(Article).filter(Article.slug == slug, Article.id != article.id).first()
+            if existing:
+                slug = f"{slug}-{str(article.id)[:8]}"
+
+            article.title = draft.get("title")
+            article.slug = slug
+            article.excerpt = draft.get("excerpt")
+            article.content_markdown = draft.get("content_markdown")
+            article.seo_title = draft.get("seo_title")
+            article.seo_description = draft.get("seo_description")
+            article.status = "draft"
+            db.commit()
+
+            # ── Agent 3: Review ───────────────────────────────────────────────
+            review = run_review_agent(draft=draft, brief=brief)
+            article.review = review
+
+            quality: int = review.get("quality_score", 0)
+            needs_human: bool = review.get("needs_human_review", True)
+
+            if not needs_human and quality >= 70:
+                article.status = "approved"
+            else:
+                article.status = "review"
+
+            db.commit()
+
+            # ── Agent 4: LinkedIn variants (always runs) ───────────────────────
+            from app.config import get_settings as _gs
+            settings = _gs()
+            blog_url = f"{settings.web_origin}/blog/{slug}" if slug else None
+
+            linkedin = run_linkedin_agent(draft=draft, brief=brief, blog_url=blog_url)
+            article.linkedin_variants = linkedin
+            db.commit()
+
+            log.info(
+                "Article pipeline done: id=%s status=%s quality=%s",
+                article_id, article.status, quality,
+            )
+            return {"article_id": article_id, "status": article.status, "quality_score": quality}
+
+        except Exception as exc:  # noqa: BLE001
+            log.exception("Article pipeline failed for %s", article_id)
+            try:
+                article.status = "failed"
+                article.error = f"{type(exc).__name__}: {exc}"[:4000]
+                db.commit()
+            except Exception:
+                pass
+            raise self.retry(exc=exc)
+    finally:
+        db.close()
+
+
+@celery_app.task(name="reputation.publish_article_task")
+def publish_article_task(article_id: str) -> dict:
+    """Publish an approved article to LinkedIn."""
+    from app.editorial.linkedin import LinkedInPublisher
+    from uuid import UUID as _UUID
+
+    db: Session = SessionLocal()
+    try:
+        article: Article | None = db.get(Article, _UUID(article_id))
+        if article is None:
+            return {"error": f"Article {article_id} not found"}
+        if article.status != "approved":
+            return {"error": f"Article must be approved (current: {article.status})"}
+        if not article.linkedin_variants:
+            return {"error": "No LinkedIn variants available"}
+
+        post_text: str = article.linkedin_variants.get("post", "")
+        publisher = LinkedInPublisher()
+        result = publisher.publish(post_text, article_id=article_id)
+
+        if result.get("success"):
+            article.linkedin_post_url = result.get("url")
+            article.status = "published"
+            article.published_at = datetime.now(timezone.utc)
+            log.info("Article %s published, url=%s mock=%s", article_id, result.get("url"), result.get("mock"))
+        else:
+            article.status = "failed"
+            article.error = result.get("error", "LinkedIn publish failed")
+            log.error("Article %s publish failed: %s", article_id, article.error)
+
+        db.commit()
+        return {"article_id": article_id, "status": article.status, "mock": result.get("mock", False)}
+    finally:
+        db.close()
+
+
+@celery_app.task(name="reputation.generate_weekly_articles")
+def generate_weekly_articles() -> dict:
+    """Triggered weekly on Monday at 09:00 UTC by Celery Beat.
+
+    Picks up to 3 brands (round-robin by oldest article) and creates one
+    article pipeline per brand. Skips brands with no description or category.
+    """
+    db: Session = SessionLocal()
+    try:
+        # Select brands with meaningful context — prefer brands not recently processed
+        subquery = (
+            db.query(Article.brand_id)
+            .filter(Article.brand_id.isnot(None))
+            .order_by(Article.created_at.desc())
+            .limit(3)
+            .subquery()
+        )
+
+        brands: list[Brand] = (
+            db.query(Brand)
+            .filter(Brand.id.notin_(subquery))
+            .filter(Brand.category.isnot(None))
+            .limit(3)
+            .all()
+        )
+
+        # Fallback: just take any 3 brands if the filter returns none
+        if not brands:
+            brands = db.query(Brand).limit(3).all()
+
+        if not brands:
+            log.info("No brands found — skipping weekly editorial generation")
+            return {"brands_processed": 0, "articles_created": 0}
+
+        created = 0
+        for brand in brands:
+            article = Article(
+                organization_id=brand.organization_id,
+                brand_id=brand.id,
+                status="idea",
+            )
+            db.add(article)
+            db.commit()
+            db.refresh(article)
+            run_article_pipeline.delay(str(article.id))
+            created += 1
+            log.info("Weekly article queued for brand '%s' → article %s", brand.name, article.id)
+
+        return {"brands_processed": len(brands), "articles_created": created}
     finally:
         db.close()

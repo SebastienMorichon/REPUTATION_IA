@@ -1,4 +1,19 @@
 import Link from "next/link";
+import type { BlogPost } from "@/lib/api";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+async function getLatestPosts(): Promise<BlogPost[]> {
+  try {
+    const res = await fetch(`${API_URL}/content/blog?limit=3`, {
+      next: { revalidate: 600 },
+    });
+    if (!res.ok) return [];
+    return res.json();
+  } catch {
+    return [];
+  }
+}
 
 /* ─── Data ───────────────────────────────────────────────── */
 
@@ -126,7 +141,9 @@ const PLANS = [
 
 /* ─── Page ───────────────────────────────────────────────── */
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  const latestPosts = await getLatestPosts();
+
   return (
     <main className="flex min-h-screen flex-col bg-bg">
       {/* ── Nav ─────────────────────────────────────────────── */}
@@ -150,6 +167,9 @@ export default function LandingPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            <Link href="/blog" className="hidden text-sm text-muted hover:text-text transition-colors sm:block">
+              Blog
+            </Link>
             <Link href="/login" className="text-sm text-muted hover:text-text transition-colors">
               Se connecter
             </Link>
@@ -325,6 +345,58 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── Blog ─────────────────────────────────────────────── */}
+      {latestPosts.length > 0 && (
+        <section className="mx-auto w-full max-w-5xl px-6 py-24">
+          <div className="mb-10 flex items-end justify-between">
+            <div>
+              <p className="label mb-2">Blog</p>
+              <h2 className="num text-4xl text-text">Nos derniers articles.</h2>
+            </div>
+            <Link href="/blog" className="hidden text-sm text-muted hover:text-accent transition-colors sm:block">
+              Voir tous les articles →
+            </Link>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            {latestPosts.map((post) => (
+              <Link
+                key={post.slug}
+                href={`/blog/${post.slug}`}
+                className="group flex flex-col rounded-2xl border border-border bg-card p-5 transition-all hover:border-accent/40 hover:shadow-sm"
+              >
+                {post.published_at && (
+                  <p className="mb-2 text-[11px] text-muted">
+                    {new Date(post.published_at).toLocaleDateString("fr-FR", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    })}
+                  </p>
+                )}
+                <h3 className="flex-1 text-sm font-semibold text-text leading-snug group-hover:text-accent transition-colors">
+                  {post.title}
+                </h3>
+                {post.excerpt && (
+                  <p className="mt-2 text-[12px] text-muted line-clamp-2 leading-relaxed">
+                    {post.excerpt}
+                  </p>
+                )}
+                <span className="mt-3 text-xs font-medium text-accent opacity-0 group-hover:opacity-100 transition-opacity">
+                  Lire →
+                </span>
+              </Link>
+            ))}
+          </div>
+
+          <div className="mt-6 text-center sm:hidden">
+            <Link href="/blog" className="text-sm text-muted hover:text-accent transition-colors">
+              Voir tous les articles →
+            </Link>
+          </div>
+        </section>
+      )}
+
       {/* ── CTA final ────────────────────────────────────────── */}
       <section className="border-t border-border bg-card py-20">
         <div className="mx-auto max-w-2xl px-6 text-center">
@@ -362,6 +434,7 @@ export default function LandingPage() {
             </div>
 
             <nav className="flex flex-wrap justify-center gap-5">
+              <Link href="/blog" className="hover:text-text transition-colors">Blog</Link>
               <Link href="/signup" className="hover:text-text transition-colors">Créer un compte</Link>
               <Link href="/login" className="hover:text-text transition-colors">Se connecter</Link>
               <Link href="#pricing" className="hover:text-text transition-colors">Tarifs</Link>

@@ -33,8 +33,13 @@ class LLMProvider(ABC):
         system: str | None = None,
         max_tokens: int = 1024,
         temperature: float = 0.2,
+        use_web_search: bool = False,
     ) -> LLMResponse:
-        """Run a free-form completion used for observation (what the LLM says about the brand)."""
+        """Run a free-form completion used for observation (what the LLM says about the brand).
+
+        Args:
+            use_web_search: If True and supported (Anthropic only), enables web search tool.
+        """
 
     @abstractmethod
     def generate_structured(

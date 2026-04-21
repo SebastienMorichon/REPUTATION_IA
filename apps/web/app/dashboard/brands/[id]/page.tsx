@@ -11,7 +11,7 @@ import { CompetitorRadar } from "@/components/CompetitorRadar";
 import { TrendChart } from "@/components/TrendChart";
 import {
   apiFetch, patchBrand, type Brand, type Competitor, type Prompt,
-  type PromptRun, type ProviderStatus, type Scores,
+  type PromptRun, type ProviderStatus, type Scores, type BillingSubscription,
 } from "@/lib/api";
 import { formatPct } from "@/lib/utils";
 
@@ -180,12 +180,23 @@ export default function BrandDetailPage({ params }: PageProps) {
   const [emailSaving, setEmailSaving] = useState(false);
   const [emailSaved, setEmailSaved] = useState(false);
 
+  // Billing/limits state
+  const [subscription, setSubscription] = useState<BillingSubscription | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
+
   // Sync surveillance state when brand loads/updates
   useEffect(() => {
     if (!brand) return;
     setSchedule(brand.run_schedule ?? "none");
     setAlertEmail(brand.alert_email ?? "");
   }, [brand]);
+
+  // Fetch subscription info for limits
+  useEffect(() => {
+    apiFetch<BillingSubscription>("/billing/subscription")
+      .then(setSubscription)
+      .catch(() => {});
+  }, []);
 
   async function saveSchedule(value: string) {
     setSchedule(value);
@@ -240,10 +251,25 @@ export default function BrandDetailPage({ params }: PageProps) {
   }, [load]);
 
   async function triggerRuns() {
+    setRunError(null);
+
+    // Check quota from backend (covers both free plan block and weekly limits)
+    if (subscription?.quota && !subscription.quota.can_run) {
+      setRunError(subscription.quota.block_reason ?? "Quota atteint. Veuillez mettre à niveau votre plan.");
+      return;
+    }
+
     setRunning(true);
-    try { await apiFetch(`/brands/${id}/runs`, { method: "POST", body: JSON.stringify({}) }); load(); }
-    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
-    finally { setRunning(false); }
+    try {
+      await apiFetch(`/brands/${id}/runs`, { method: "POST", body: JSON.stringify({}) });
+      load();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setRunError(msg);
+      setError(msg);
+    } finally {
+      setRunning(false);
+    }
   }
 
   async function addCompetitor(e: React.FormEvent) {
@@ -257,8 +283,21 @@ export default function BrandDetailPage({ params }: PageProps) {
   async function addPrompt(e: React.FormEvent) {
     e.preventDefault();
     if (!newPromptText.trim()) return;
-    await apiFetch(`/brands/${id}/prompts`, { method: "POST", body: JSON.stringify({ text: newPromptText, importance: 1, enabled: true }) });
+    await apiFetch(`/brands/${id}/prompts`, { method: "POST", body: JSON.stringify({ text: newPromptText, importance: 1, enabled: true, use_web_search: false }) });
     setNewPromptText("");
+    load();
+  }
+
+  async function toggleWebSearch(promptId: string, currentValue: boolean) {
+    // Check plan eligibility
+    if (subscription && !subscription.is_trial && subscription.effective_plan === "free") {
+      setRunError("La recherche web est réservée aux plans Pro et Agence.");
+      return;
+    }
+    await apiFetch(`/brands/${id}/prompts/${promptId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ use_web_search: !currentValue })
+    });
     load();
   }
 
@@ -280,6 +319,15 @@ export default function BrandDetailPage({ params }: PageProps) {
 
   async function generatePrompts() {
     setGenerating(true);
+    setRunError(null);
+
+    // Check if auto-generate is allowed for this plan
+    if (subscription && !subscription.limits.auto_generate_prompts) {
+      setRunError("La génération automatique de questions n'est pas disponible sur votre plan gratuit. Veuillez passer à un abonnement payant.");
+      setGenerating(false);
+      return;
+    }
+
     try {
       const qs = generateLocation.trim()
         ? `?location=${encodeURIComponent(generateLocation.trim())}`
@@ -355,18 +403,50 @@ export default function BrandDetailPage({ params }: PageProps) {
             </div>
           </div>
         </div>
-        <button
-          onClick={triggerRuns}
-          className="btn-dark"
-          disabled={running || prompts.length === 0 || enabledProviders.length === 0}
-          title={
-            prompts.length === 0 ? "Ajoute d'abord un prompt"
-            : enabledProviders.length === 0 ? "Active un provider dans .env"
-            : undefined
-          }
-        >
-          {running ? "Lancement…" : "▶ Lancer un run"}
-        </button>
+        <div className="flex flex-col items-end gap-2">
+          {runError && (
+            <div className="max-w-xs rounded-lg border px-3 py-2 text-xs" style={{ color: "var(--bad)", background: "rgba(220,38,38,0.06)", borderColor: "rgba(220,38,38,0.2)" }}>
+              {runError}
+            </div>
+          )}
+
+          {/* Quota indicator */}
+          {subscription?.quota && (() => {
+            const q = subscription.quota!;
+            const max = subscription.limits.max_runs_per_week;
+            if (max === -1) return (
+              <span className="text-[11px] text-muted">Runs illimités</span>
+            );
+            const pct = Math.min(100, Math.round((q.runs_this_week / max) * 100));
+            const color = !q.can_run ? "var(--bad)" : pct >= 75 ? "var(--warn)" : "var(--muted)";
+            return (
+              <div className="flex flex-col items-end gap-1">
+                <span className="text-[11px]" style={{ color }}>
+                  {!q.can_run
+                    ? "Quota atteint"
+                    : `${q.runs_remaining} run${q.runs_remaining !== 1 ? "s" : ""} restant${q.runs_remaining !== 1 ? "s" : ""} / semaine`}
+                </span>
+                <div className="h-1 w-24 overflow-hidden rounded-full" style={{ background: "var(--border)" }}>
+                  <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
+                </div>
+              </div>
+            );
+          })()}
+
+          <button
+            onClick={triggerRuns}
+            className="btn-dark"
+            disabled={running || prompts.length === 0 || enabledProviders.length === 0 || subscription?.quota?.can_run === false}
+            title={
+              prompts.length === 0 ? "Ajoute d'abord un prompt"
+              : enabledProviders.length === 0 ? "Active un provider dans .env"
+              : !subscription?.quota?.can_run ? (subscription?.quota?.block_reason ?? "Quota atteint")
+              : undefined
+            }
+          >
+            {running ? "Lancement…" : "▶ Lancer un run"}
+          </button>
+        </div>
       </div>
 
       {/* ── KPI row ── */}
@@ -552,13 +632,195 @@ export default function BrandDetailPage({ params }: PageProps) {
         </div>
       </div>
 
-      {/* ── Heatmap prompts × modèles ── */}
+      {/* ── Résumé IA : ce que les IA disent de vous ── */}
+      {runs.filter((r) => r.status === "done").length > 0 && (
+        <div className="card">
+          <div className="label">🤖 Ce que les IA disent de vous</div>
+          <p className="mb-4 text-sm text-muted">
+            Synthèse des réponses analysées sur les 30 derniers jours
+          </p>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            {/* Points forts */}
+            <div className="rounded-xl border border-border bg-bg p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg text-lg" style={{ background: "var(--good)/20" }}>
+                  ✓
+                </div>
+                <span className="font-medium text-text">Points forts</span>
+              </div>
+              <ul className="space-y-2 text-sm text-muted">
+                {(() => {
+                  const doneRuns = runs.filter((r) => r.status === "done");
+                  const citedRuns = doneRuns.filter((r) => r.mentions.some((m) => m.is_target_brand));
+                  const citationRate = doneRuns.length ? citedRuns.length / doneRuns.length : 0;
+
+                  // 1. Bon rang moyen
+                  const avgRank = (() => {
+                    const allRanks = runs.flatMap((r) => r.mentions.filter((m) => m.is_target_brand && m.rank_position != null).map((m) => m.rank_position!));
+                    return allRanks.length ? (allRanks.reduce((a, b) => a + b, 0) / allRanks.length).toFixed(1) : null;
+                  })();
+
+                  // 2. Sentiment positif
+                  const positiveMentions = runs.flatMap((r) => r.mentions.filter((m) => m.is_target_brand && m.sentiment === "positive"));
+
+                  // 3. Visibilité globale
+                  if (citationRate >= 0.5) {
+                    return <li className="text-text">Votre marque est citée dans {Math.round(citationRate * 100)}% des réponses IA</li>;
+                  }
+                  if (avgRank && Number(avgRank) <= 3) {
+                    return <li className="text-text">Bien positionné dans les réponses (rang moyen #{avgRank})</li>;
+                  }
+                  if (positiveMentions.length > 0) {
+                    return <li className="text-text">Sentiment positif dans les réponses IA</li>;
+                  }
+                  return <li>Aucun point fort détecté — lancez plus d'analyses</li>;
+                })()}
+              </ul>
+            </div>
+
+            {/* Points de vigilance */}
+            <div className="rounded-xl border border-border bg-bg p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg text-lg" style={{ background: "var(--warn)/20" }}>
+                  ⚠
+                </div>
+                <span className="font-medium text-text">Points de vigilance</span>
+              </div>
+              <ul className="space-y-2 text-sm text-muted">
+                {(() => {
+                  const negativeRuns = runs.filter((r) => r.status === "done" && r.mentions.some((m) => m.is_target_brand && m.sentiment === "negative"));
+                  if (negativeRuns.length > 0) {
+                    return negativeRuns.slice(0, 3).map((r, i) => {
+                      const mention = r.mentions.find((m) => m.is_target_brand && m.sentiment === "negative");
+                      return (
+                        <li key={i} className="flex items-start gap-2">
+                          <span className="mt-1 text-xs text-warn">•</span>
+                          <span className="line-clamp-2">{mention?.context_excerpt || "Sentiment négatif détecté"}</span>
+                        </li>
+                      );
+                    });
+                  }
+                  const absentRuns = runs.filter((r) => r.status === "done" && !r.mentions.some((m) => m.is_target_brand));
+                  if (absentRuns.length > runs.filter((r) => r.status === "done").length / 2) {
+                    return <li>Votre marque est absente de la moitié des réponses</li>;
+                  }
+                  return <li>Aucun point de vigilance majeur</li>;
+                })()}
+              </ul>
+            </div>
+
+            {/* Concurrents cités avec vous */}
+            <div className="rounded-xl border border-border bg-bg p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg text-lg" style={{ background: "var(--accent)/20" }}>
+                  ⚔
+                </div>
+                <span className="font-medium text-text">Concurrents cités</span>
+              </div>
+              <ul className="space-y-2 text-sm text-muted">
+                {(() => {
+                  const competitorMentions: Record<string, number> = {};
+                  runs.filter((r) => r.status === "done").forEach((r) => {
+                    r.mentions.filter((m) => m.is_known_competitor).forEach((m) => {
+                      competitorMentions[m.entity_name] = (competitorMentions[m.entity_name] ?? 0) + 1;
+                    });
+                  });
+                  const sorted = Object.entries(competitorMentions).sort((a, b) => b[1] - a[1]).slice(0, 4);
+                  if (sorted.length > 0) {
+                    return sorted.map(([name, count]) => (
+                      <li key={name} className="flex items-center justify-between">
+                        <span>{name}</span>
+                        <span className="rounded bg-border px-2 py-0.5 text-xs text-text">{count}x</span>
+                      </li>
+                    ));
+                  }
+                  return <li>Aucun concurrent identifié dans les réponses</li>;
+                })()}
+              </ul>
+            </div>
+          </div>
+
+          {/* Citations récentes */}
+          {(() => {
+            const recentCitations = runs
+              .filter((r) => r.status === "done")
+              .flatMap((r) => r.citations.filter((c) => c.refers_to_target && c.url).map((c) => ({ ...c, provider: r.provider })))
+              .slice(0, 6);
+
+            if (recentCitations.length > 0) {
+              return (
+                <div className="mt-6">
+                  <div className="mb-3 text-sm font-medium text-text">📰 Sources qui vous citent</div>
+                  <div className="flex flex-wrap gap-2">
+                    {recentCitations.map((c, i) => (
+                      <a
+                        key={i}
+                        href={c.url!}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 rounded-lg border border-border bg-bg px-3 py-2 text-xs text-muted hover:border-accent hover:text-text"
+                      >
+                        <span className="max-w-[200px] truncate">{c.title || c.domain}</span>
+                        <span className="flex-shrink-0 rounded bg-border px-1.5 py-0.5 text-[10px] capitalize">{c.provider}</span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              );
+            }
+            return null;
+          })()}
+        </div>
+      )}
+
+      {/* ── Performance par question et par IA ── */}
       {heatmap.length > 0 && enabledProviders.length > 0 && (
         <div className="card overflow-x-auto">
-          <div className="label">Position par question et par IA</div>
+          <div className="label">Performance par question et par IA</div>
           <p className="mb-4 text-sm text-muted">
-            À quel rang apparaissez-vous dans chaque réponse ? (#1 = première place)
+            Position de votre marque dans les réponses (#1 = 1ère place)
           </p>
+
+          {/* KPIs globaux */}
+          <div className="mb-6 grid gap-3 md:grid-cols-4">
+            <div className="rounded-lg border border-border bg-bg p-3 text-center">
+              <div className="text-xs text-muted">Rang moyen</div>
+              <div className="mt-1 num text-2xl font-bold" style={{ color: "var(--text)" }}>
+                {(() => {
+                  const allRanks = runs.flatMap((r) => r.mentions.filter((m) => m.is_target_brand && m.rank_position != null).map((m) => m.rank_position!));
+                  return allRanks.length ? `#${(allRanks.reduce((a, b) => a + b, 0) / allRanks.length).toFixed(1)}` : "—";
+                })()}
+              </div>
+            </div>
+            <div className="rounded-lg border border-border bg-bg p-3 text-center">
+              <div className="text-xs text-muted">Meilleure position</div>
+              <div className="mt-1 num text-2xl font-bold" style={{ color: "var(--good)" }}>
+                {(() => {
+                  const allRanks = runs.flatMap((r) => r.mentions.filter((m) => m.is_target_brand && m.rank_position != null).map((m) => m.rank_position!));
+                  return allRanks.length ? `#${Math.min(...allRanks)}` : "—";
+                })()}
+              </div>
+            </div>
+            <div className="rounded-lg border border-border bg-bg p-3 text-center">
+              <div className="text-xs text-muted">Taux de citation</div>
+              <div className="mt-1 num text-2xl font-bold" style={{ color: "var(--accent)" }}>
+                {(() => {
+                  const doneRuns = runs.filter((r) => r.status === "done");
+                  const citedRuns = doneRuns.filter((r) => r.mentions.some((m) => m.is_target_brand));
+                  return doneRuns.length ? `${Math.round((citedRuns.length / doneRuns.length) * 100)}%` : "—";
+                })()}
+              </div>
+            </div>
+            <div className="rounded-lg border border-border bg-bg p-3 text-center">
+              <div className="text-xs text-muted">Analyses terminées</div>
+              <div className="mt-1 num text-2xl font-bold" style={{ color: "var(--text)" }}>
+                {runs.filter((r) => r.status === "done").length}
+              </div>
+            </div>
+          </div>
+
+          {/* Tableau heatmap */}
           <table className="w-full text-sm">
             <thead>
               <tr>
@@ -567,7 +829,10 @@ export default function BrandDetailPage({ params }: PageProps) {
                 </th>
                 {enabledProviders.map((prov) => (
                   <th key={prov.name} className="px-3 py-2 text-center text-xs uppercase text-muted font-medium">
-                    {prov.name.slice(0, 3).toUpperCase()}
+                    <div className="flex flex-col items-center">
+                      <span>{prov.name.slice(0, 3).toUpperCase()}</span>
+                      <span className="text-[9px] font-normal text-muted">{prov.default_model.split("-").slice(0, 2).join("-")}</span>
+                    </div>
                   </th>
                 ))}
               </tr>
@@ -608,7 +873,8 @@ export default function BrandDetailPage({ params }: PageProps) {
               ))}
             </tbody>
           </table>
-          {/* Legend */}
+
+          {/* Légende */}
           <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted">
             {[
               { bg: "var(--border)",           text: "○",  label: "Non citée", fg: "var(--muted)" },
@@ -654,9 +920,11 @@ export default function BrandDetailPage({ params }: PageProps) {
             <button
               onClick={generatePrompts}
               className="btn-ghost text-xs border border-border"
-              disabled={generating}
+              disabled={generating || (subscription?.limits.auto_generate_prompts === false)}
               title={
-                brand.domain
+                subscription?.limits.auto_generate_prompts === false
+                  ? "La génération automatique de questions n'est pas disponible sur votre plan gratuit"
+                  : brand.domain
                   ? `Analyse ${brand.domain} pour générer des questions spécifiques à votre activité${generateLocation ? ` (région : ${generateLocation})` : ""}`
                   : `Génère des questions pour la catégorie "${brand.category || "générique"}"${generateLocation ? ` (région : ${generateLocation})` : ""}`
               }
@@ -696,6 +964,7 @@ export default function BrandDetailPage({ params }: PageProps) {
                   <th className="px-4 py-2 text-center text-xs uppercase text-muted font-medium">Position moy.</th>
                   <th className="px-4 py-2 text-center text-xs uppercase text-muted font-medium">IA testées</th>
                   <th className="px-4 py-2 text-center text-xs uppercase text-muted font-medium">Image</th>
+                  <th className="px-4 py-2 text-center text-xs uppercase text-muted font-medium">Recherche web</th>
                   <th className="py-2" />
                 </tr>
               </thead>
@@ -744,6 +1013,29 @@ export default function BrandDetailPage({ params }: PageProps) {
                       </td>
                       <td className={`px-4 py-3 text-center text-sm ${sentimentColor}`}>
                         {sentimentSummary}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <button
+                          onClick={() => toggleWebSearch(p.id, p.use_web_search)}
+                          disabled={!!(subscription && !subscription.is_trial && subscription.effective_plan === "free")}
+                          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                            subscription && !subscription.is_trial && subscription.effective_plan === "free" ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
+                          }`}
+                          style={{ background: p.use_web_search ? "var(--accent)" : "rgba(0,0,0,0.18)" }}
+                          title={
+                            subscription && !subscription.is_trial && subscription.effective_plan === "free"
+                              ? "Réservé aux plans Pro et Agence"
+                              : p.use_web_search
+                              ? "Recherche web activée (Claude ira chercher des infos en ligne)"
+                              : "Recherche web désactivée"
+                          }
+                        >
+                          <span
+                            className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform ${
+                              p.use_web_search ? "translate-x-4" : "translate-x-1"
+                            }`}
+                          />
+                        </button>
                       </td>
                       <td className="py-3 text-right">
                         <button
@@ -840,6 +1132,28 @@ export default function BrandDetailPage({ params }: PageProps) {
       {/* ── Paramètres de surveillance ── */}
       <div className="card space-y-6">
         <div className="label">Paramètres de surveillance</div>
+
+        {/* Recherche web info */}
+        <div className="rounded-xl border border-border bg-bg p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="text-sm font-medium text-text">Recherche web avec Claude</div>
+              <div className="mt-1 text-xs text-muted">
+                Activez la recherche web pour que Claude aille chercher des informations en temps réel sur le web avant de répondre.
+                Utile pour surveiller l'actualité récente, les nouvelles sources, ou les sujets d'actualité.
+              </div>
+              <div className="mt-2 text-xs" style={{ color: "var(--accent)" }}>
+                🔒 Réservé aux plans Pro et Agence — {subscription?.effective_plan === "free" && !subscription?.is_trial ? "non disponible sur votre plan actuel" : "disponible sur votre plan"}
+              </div>
+            </div>
+            <div
+              className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl text-lg font-bold"
+              style={{ background: "var(--accent)/20", color: "var(--accent)" }}
+            >
+              🌐
+            </div>
+          </div>
+        </div>
 
         {/* Fréquence d'analyse automatique */}
         <div>

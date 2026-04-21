@@ -243,6 +243,7 @@ def get_organization(
 class OrgUpdate(BaseModel):
     plan: str | None = None
     trial_ends_at: datetime | None = None
+    clear_trial: bool = False   # explicitly terminate trial immediately
     name: str | None = None
 
 
@@ -262,12 +263,18 @@ def update_organization(
         if body.plan not in valid_plans:
             raise HTTPException(400, f"Plan invalide. Valeurs acceptées : {valid_plans}")
         org.plan = body.plan
+        # Assigning a paid plan while trial is active → terminate trial immediately
+        # so effective_plan() returns the new plan instead of "trial".
+        if body.plan != "free" and is_trial_active(org.trial_ends_at):
+            org.trial_ends_at = None
     if body.trial_ends_at is not None:
         org.trial_ends_at = body.trial_ends_at
+    if body.clear_trial:
+        org.trial_ends_at = None
     if body.name is not None:
         org.name = body.name
     db.commit()
-    log.info("Admin updated org %s: plan=%s trial=%s", org_id, body.plan, body.trial_ends_at)
+    log.info("Admin updated org %s: plan=%s trial=%s clear_trial=%s", org_id, body.plan, body.trial_ends_at, body.clear_trial)
     return _serialize_org(org, db)
 
 
