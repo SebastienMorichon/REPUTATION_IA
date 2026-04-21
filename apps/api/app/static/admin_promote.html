@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Promouvoir Admin - AI Reputation Shield</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #e5e5e5;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 16px;
+            padding: 32px;
+            max-width: 420px;
+            width: 100%;
+        }
+        h1 { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+        p { color: #888; font-size: 14px; margin-bottom: 24px; }
+        label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: #aaa; }
+        input {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid #333;
+            border-radius: 8px;
+            background: #0a0a0a;
+            color: #e5e5e5;
+            font-size: 14px;
+            margin-bottom: 16px;
+        }
+        input:focus { outline: 2px solid #4ade80; border-color: transparent; }
+        button {
+            width: 100%;
+            padding: 12px;
+            background: #4ade80;
+            color: #000;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        button:hover { opacity: 0.9; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .message {
+            padding: 10px 14px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            font-size: 13px;
+        }
+        .success { background: rgba(74, 222, 128, 0.15); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.3); }
+        .error { background: rgba(248, 113, 113, 0.15); color: #f87171; border: 1px solid rgba(248, 113, 113, 0.3); }
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 24px;
+        }
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: #4ade80;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .logo-icon svg { width: 18px; height: 18px; stroke: #000; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">
+            <div class="logo-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                    <path d="M2 17l10 5 10-5"/>
+                    <path d="M2 12l10 5 10-5"/>
+                </svg>
+            </div>
+            <span style="font-weight: 600;">AI Reputation Shield</span>
+        </div>
+
+        <h1>Promouvoir administrateur</h1>
+        <p>Utilisez cette page pour promouvoir un utilisateur en admin.</p>
+
+        <div id="message"></div>
+
+        <form id="promoteForm">
+            <label for="email">Email de l'utilisateur</label>
+            <input type="email" id="email" name="email" required placeholder="nom@exemple.com">
+
+            <label for="code">Code secret</label>
+            <input type="text" id="code" name="code" required placeholder="Entrez le code secret">
+
+            <button type="submit" id="submitBtn">Promouvoir administrateur</button>
+        </form>
+    </div>
+
+    <script>
+        const form = document.getElementById('promoteForm');
+        const message = document.getElementById('message');
+        const submitBtn = document.getElementById('submitBtn');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const code = document.getElementById('code').value;
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Promotion...';
+            message.innerHTML = '';
+
+            try {
+                const response = await fetch(`/auth/admin/promote-by-code?email=${encodeURIComponent(email)}&code=${encodeURIComponent(code)}`);
+                const data = await response.json();
+
+                if (response.ok) {
+                    message.innerHTML = `<div class="success">✅ ${data.message}</div>`;
+                    document.getElementById('email').value = '';
+                    document.getElementById('code').value = '';
+                } else {
+                    message.innerHTML = `<div class="error">❌ ${data.detail || 'Échec de la promotion'}</div>`;
+                }
+            } catch (err) {
+                message.innerHTML = `<div class="error">❌ Erreur de connexion</div>`;
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Promouvoir administrateur';
+            }
+        });
+    </script>
+</body>
+</html>

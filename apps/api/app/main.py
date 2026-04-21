@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text, inspect
 
 from app.config import get_settings
@@ -99,6 +100,12 @@ def create_app() -> FastAPI:
     app.include_router(billing.router)
     app.include_router(admin.router)
     app.include_router(content.router)
+
+    # Serve static HTML utility pages (e.g., admin promote)
+    try:
+        app.mount("/static", StaticFiles(directory="app/static"), name="static")
+    except Exception as e:
+        print(f"⚠️  Static files not mounted: {e}")
 
     return app
 

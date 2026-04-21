@@ -132,3 +132,47 @@ def delete_account(
     db.delete(user)
     db.commit()
     return {"message": "Account deleted successfully"}
+
+
+@router.post("/admin/promote")
+def promote_to_admin(
+    email: str,
+    requesting_user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Promote a user to admin. Only callable by existing admins."""
+    if not requesting_user.is_admin:
+        raise HTTPException(status_code=403, detail="Only admins can promote users")
+
+    target = db.query(User).filter(User.email == email).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    target.is_admin = True
+    db.commit()
+    return {"message": f"User {email} is now admin"}
+
+
+@router.get("/admin/promote-by-code")
+def promote_by_code(
+    email: str,
+    code: str,
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    Promote a user to admin using a secret code.
+    Usage: GET /auth/admin/promote-by-code?email=user@example.com&code=YOUR_SECRET_CODE
+    The code must match ADMIN_PROMOTE_CODE env var.
+    """
+    import os
+    secret_code = os.getenv("ADMIN_PROMOTE_CODE")
+    if not secret_code or code != secret_code:
+        raise HTTPException(status_code=403, detail="Invalid code")
+
+    target = db.query(User).filter(User.email == email).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    target.is_admin = True
+    db.commit()
+    return {"message": f"User {email} is now admin"}
