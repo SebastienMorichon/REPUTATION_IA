@@ -19,6 +19,9 @@ def _parse_origins(raw: str) -> list[str]:
 
 def _run_migrations() -> None:
     """Auto-migrate missing columns on startup."""
+    from sqlalchemy.exc import OperationalError
+
+    print("🔍 Running database migrations...")
     try:
         with engine.connect() as conn:
             inspector = inspect(engine)
@@ -26,13 +29,22 @@ def _run_migrations() -> None:
 
             if "use_web_search" not in prompts_columns:
                 print("➕ Adding use_web_search column to prompts table...")
-                conn.execute(text("ALTER TABLE prompts ADD COLUMN use_web_search BOOLEAN DEFAULT FALSE"))
+                conn.execute(text("ALTER TABLE prompts ADD COLUMN use_web_search BOOLEAN DEFAULT FALSE NOT NULL"))
                 conn.commit()
-                print("✅ Migration successful!")
+                print("✅ Column use_web_search added successfully!")
             else:
                 print("✅ Column use_web_search already exists")
+
+            # Also check prompt_runs for safety
+            runs_columns = [col["name"] for col in inspector.get_columns("prompt_runs")]
+            print(f"✅ prompt_runs table has {len(runs_columns)} columns")
+    except OperationalError as e:
+        print(f"❌ Database migration failed (DB not ready?): {e}")
+        raise
     except Exception as e:
-        print(f"⚠️  Migration check completed (or skipped): {e}")
+        print(f"❌ Migration error: {e}")
+        raise
+    print("✅ All migrations completed")
 
 
 def create_app() -> FastAPI:
