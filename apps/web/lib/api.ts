@@ -133,6 +133,21 @@ export interface Prompt {
   enabled: boolean;
   use_web_search: boolean;
   created_at: string;
+  // Strategy Engine fields
+  prompt_category: "discovery" | "comparison" | "reputation" | "authority" | null;
+  intent_label: string | null;
+  business_value_score: number | null;
+  priority_level: "low" | "medium" | "high" | "critical" | null;
+  difficulty_level: "easy" | "medium" | "hard" | null;
+  explanation: string | null;
+  target_competitors: string[] | null;
+  is_brand_mentioned: boolean;
+  expected_signal: string | null;
+  // Core / Strategic Framework fields
+  prompt_scope: "core" | "strategic" | null;
+  benchmark_eligible: boolean;
+  strategic_eligible: boolean;
+  sector_key: string | null;
 }
 
 export interface Mention {
@@ -278,4 +293,21 @@ export interface BlogPost {
 
 export interface BlogPostFull extends BlogPost {
   content_markdown: string;
+}
+
+// ----- Strategic PDF report types -----
+
+export interface BrandReport {
+  id: string;
+  brand_id: string;
+  user_id: string | null;
+  report_type: string;
+  title: string;
+  period_start: string;
+  period_end: string;
+  file_path: string | null;
+  status: "pending" | "generating" | "done" | "failed";
+  error_message: string | null;
+  created_at: string;
+  completed_at: string | null;
 }

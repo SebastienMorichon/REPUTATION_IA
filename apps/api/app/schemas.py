@@ -99,6 +99,11 @@ class PromptCreate(BaseModel):
     importance: int = 1
     enabled: bool = True
     use_web_search: bool = False
+    # Core / Strategic Framework fields
+    prompt_scope: str | None = None
+    benchmark_eligible: bool | None = None
+    strategic_eligible: bool | None = None
+    sector_key: str | None = None
 
 
 class PromptUpdate(BaseModel):
@@ -108,6 +113,11 @@ class PromptUpdate(BaseModel):
     importance: int | None = None
     enabled: bool | None = None
     use_web_search: bool | None = None
+    # Core / Strategic Framework fields
+    prompt_scope: str | None = None
+    benchmark_eligible: bool | None = None
+    strategic_eligible: bool | None = None
+    sector_key: str | None = None
 
 
 class PromptRead(ORMModel):
@@ -119,6 +129,21 @@ class PromptRead(ORMModel):
     importance: int
     enabled: bool
     use_web_search: bool = False
+    # Strategy Engine fields
+    prompt_category: str | None = None
+    intent_label: str | None = None
+    business_value_score: float | None = None
+    priority_level: str | None = None
+    difficulty_level: str | None = None
+    explanation: str | None = None
+    target_competitors: list[str] | None = None
+    is_brand_mentioned: bool = False
+    expected_signal: str | None = None
+    # Core / Strategic Framework fields
+    prompt_scope: str | None = None
+    benchmark_eligible: bool = False
+    strategic_eligible: bool = False
+    sector_key: str | None = None
     created_at: datetime
 
 
@@ -151,18 +176,6 @@ class CitationRead(ORMModel):
     title: str | None
     citation_type: str | None
     refers_to_target: bool
-
-
-class PromptRead(ORMModel):
-    id: uuid.UUID
-    brand_id: uuid.UUID
-    text: str
-    language: str | None
-    intent: str | None
-    importance: int
-    enabled: bool
-    use_web_search: bool = False
-    created_at: datetime
 
 
 class PromptRunRead(ORMModel):
@@ -238,5 +251,73 @@ class ArticleRead(ORMModel):
 
 
 class ArticleGenerateRequest(BaseModel):
-    brand_id: uuid.UUID | None = None
     topic_hint: str | None = None   # optional guidance for Agent 1
+
+
+# ---------- AI Reputation Overview ----------
+
+
+class ExecutiveStats(BaseModel):
+    prompts_analyzed: int = 0
+    providers_analyzed: int = 0
+    sources_analyzed: int = 0
+
+
+class Trend(BaseModel):
+    previous_score: float | None = None
+    delta: float | None = None
+    direction: str | None = None  # "up", "down", "stable"
+
+
+class ExecutiveScore(ORMModel):
+    score: float
+    grade: str
+    label: str
+    interpretation: str
+    trend: Trend | None = None
+    audit_date: str | None = None
+    stats: ExecutiveStats
+
+
+class PillarMetric(BaseModel):
+    label: str
+    value: str
+
+
+class StrategicPillar(ORMModel):
+    key: str  # visibility, authority, dominance, opportunity, narrative
+    title: str
+    question: str
+    score: float
+    grade: str
+    status: str  # Fort, Moyen, Faible, Critique
+    interpretation: str
+    metrics: list[PillarMetric] = []
+
+
+class BusinessPriority(ORMModel):
+    rank: int
+    title: str
+    impact: str  # Critique, Fort, Moyen, Faible
+    pillar: str
+    reason: str
+    action: str
+    effort: str  # Faible, Moyen, Fort
+    timeline: str  # Court terme, Moyen terme, Long terme
+
+
+class TechnicalEvidenceSummary(ORMModel):
+    audit_status: str = "unknown"
+    sources_analyzed: int = 0
+    pages_crawled: int = 0
+    runs_analyzed: int = 0
+    sources: list[dict] = []
+    page_features: list[dict] = []
+
+
+class AIReputationOverview(ORMModel):
+    """Complete 4-level hierarchy response for AI Reputation dashboard."""
+    executive_score: ExecutiveScore
+    pillars: list[StrategicPillar]
+    business_priorities: list[BusinessPriority] = []
+    technical_evidence: TechnicalEvidenceSummary

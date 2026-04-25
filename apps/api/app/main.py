@@ -5,7 +5,8 @@ from sqlalchemy import text, inspect
 
 from app.config import get_settings
 from app.database import Base, engine
-from app.routers import admin, alerts, auth, billing, brands, content, prompts, providers, reports, runs, scores
+from app.routers import admin, alerts, auth, billing, brands, content, prompt_categories, prompts, providers, reports, runs, scores
+from app.routers.admin_prompt_framework import router as admin_prompt_framework_router
 
 settings = get_settings()
 
@@ -23,6 +24,30 @@ try:
             print("✅ Column use_web_search added!")
         else:
             print("✅ Column use_web_search already exists")
+
+        # ── Prompt Strategy Engine columns ────────────────────────────────────
+        new_prompt_columns = {
+            "prompt_category": "VARCHAR(32)",
+            "intent_label": "VARCHAR(255)",
+            "business_value_score": "FLOAT",
+            "priority_level": "VARCHAR(16)",
+            "difficulty_level": "VARCHAR(16)",
+            "explanation": "TEXT",
+            "target_competitors": "JSONB",
+            "is_brand_mentioned": "BOOLEAN DEFAULT FALSE",
+            "expected_signal": "VARCHAR(64)",
+            # ── Core / Strategic Framework ──────────────────────────────────────
+            "prompt_scope": "VARCHAR(16)",
+            "benchmark_eligible": "BOOLEAN DEFAULT FALSE",
+            "strategic_eligible": "BOOLEAN DEFAULT FALSE",
+            "sector_key": "VARCHAR(32)",
+        }
+        for col_name, col_def in new_prompt_columns.items():
+            if col_name not in prompts_columns:
+                print(f"➕ Adding {col_name} column to prompts table...")
+                conn.execute(text(f"ALTER TABLE prompts ADD COLUMN {col_name} {col_def}"))
+                conn.commit()
+                print(f"✅ Column {col_name} added!")
 except Exception as e:
     print(f"⚠️  Migration note: {e}")
 
@@ -100,6 +125,8 @@ def create_app() -> FastAPI:
     app.include_router(billing.router)
     app.include_router(admin.router)
     app.include_router(content.router)
+    app.include_router(prompt_categories.router)
+    app.include_router(admin_prompt_framework_router)
 
     # Serve static HTML utility pages (e.g., admin promote)
     try:

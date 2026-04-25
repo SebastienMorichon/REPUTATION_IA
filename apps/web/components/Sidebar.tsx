@@ -41,7 +41,9 @@ function buildGroups(isAdmin: boolean) {
               { href: "/admin", label: "📊 Vue globale", exact: true },
               { href: "/admin/customers", label: "👥 Clients" },
               { href: "/admin/usage", label: "📈 Usage" },
-              { href: "/admin/settings", label: "⚙️ Config plateforme" },
+              { href: "/admin/plans", label: "💎 Offres & Tarifs" },
+              { href: "/admin/settings", label: "⚙️ Providers" },
+              { href: "/admin/prompt-framework", label: "🎯 Prompt Framework" },
             ],
           },
         ]

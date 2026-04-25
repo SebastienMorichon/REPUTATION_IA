@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from typing import Iterable
 
@@ -71,6 +71,31 @@ def compute_scores(runs: Iterable[PromptRun]) -> AggregateScores:
         runs_count=total,
         top_competitors=competitor_counter.most_common(10),
     )
+
+
+def compute_benchmark_score(runs: Iterable[PromptRun]) -> AggregateScores:
+    """Compute scores using ONLY core prompts (benchmark_eligible=True)."""
+    filtered = [r for r in runs if r.prompt and r.prompt.benchmark_eligible]
+    return compute_scores(filtered)
+
+
+def compute_opportunity_score(runs: Iterable[PromptRun]) -> AggregateScores:
+    """Compute scores using ONLY strategic prompts (strategic_eligible=True)."""
+    filtered = [r for r in runs if r.prompt and r.prompt.strategic_eligible]
+    return compute_scores(filtered)
+
+
+def compute_global_prompt_score(
+    benchmark: AggregateScores,
+    opportunity: AggregateScores,
+) -> dict[str, float]:
+    """Blend 70% benchmark + 30% opportunity into a dict of 4 scores."""
+    return {
+        "visibility_score": round(benchmark.visibility_score * 0.7 + opportunity.visibility_score * 0.3, 2),
+        "share_of_voice":   round(benchmark.share_of_voice   * 0.7 + opportunity.share_of_voice   * 0.3, 2),
+        "sentiment_score": round(benchmark.sentiment_score * 0.7 + opportunity.sentiment_score * 0.3, 2),
+        "citation_score":   round(benchmark.citation_score   * 0.7 + opportunity.citation_score   * 0.3, 2),
+    }
 
 
 def now_utc() -> datetime:

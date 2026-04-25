@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Kpi } from "@/components/Kpi";
 import { SovBar } from "@/components/SovBar";
@@ -10,7 +10,7 @@ import { InfoTooltip } from "@/components/InfoTooltip";
 import { CompetitorRadar } from "@/components/CompetitorRadar";
 import { TrendChart } from "@/components/TrendChart";
 import {
-  apiFetch, patchBrand, type Brand, type Competitor, type Prompt,
+  API_URL, apiFetch, getToken, patchBrand, type Brand, type BrandReport, type Competitor, type Prompt,
   type PromptRun, type ProviderStatus, type Scores, type BillingSubscription,
 } from "@/lib/api";
 import { formatPct } from "@/lib/utils";
@@ -141,6 +141,60 @@ function cellTitle(cell: HeatCell | undefined): string {
   return cell.rank != null ? `Citée en position #${cell.rank}` : "Citée";
 }
 
+/* ─── Prompt Strategy constants ─────────────────────────── */
+
+const STRATEGY_CATS = [
+  { key: "discovery",  title: "Discovery",  emoji: "🔍", color: "#6366F1",
+    what: "Mesure si votre marque apparaît spontanément quand un utilisateur cherche une solution, sans citer votre nom.",
+    how:  "Idéalement 40 % du portfolio. Une forte présence ici signifie que les IA vous recommandent naturellement sans que le prospect vous connaisse.",
+    tips: "C'est le signal le plus décisif pour la réputation décisionnelle.",
+    desc: "Recommandation spontanée" },
+  { key: "comparison", title: "Comparison", emoji: "⚖️", color: "#0EA5E9",
+    what: "Mesure si votre marque est préférée lorsqu'elle est comparée à d'autres acteurs.",
+    how:  "Idéalement 25 % du portfolio. Mesure votre dominance quand les IA comparent plusieurs acteurs.",
+    tips: "Très utile pour surveiller vos concurrents directs.",
+    desc: "Comparaison concurrentielle" },
+  { key: "reputation", title: "Reputation", emoji: "💬", color: "#F59E0B",
+    what: "Mesure ce que les IA disent explicitement de votre marque : confiance, avis, risques ou perception.",
+    how:  "Idéalement 20 % du portfolio. Révèle le narratif construit par les IA sur votre marque.",
+    tips: "Surveiller régulièrement pour détecter les biais négatifs.",
+    desc: "Fiabilité et confiance" },
+  { key: "authority",  title: "Authority",  emoji: "🏆", color: "#10B981",
+    what: "Mesure si votre marque est reconnue comme une référence crédible dans son domaine.",
+    how:  "Idéalement 15 % du portfolio. Mesure si les IA vous citent comme expert ou leader sectoriel.",
+    tips: "Publiez du contenu expert et obtenez des mentions dans des sources de référence.",
+    desc: "Expertise sectorielle" },
+] as const;
+
+const SCOPE_INFO = {
+  core: {
+    label: "Core",
+    badge: "Benchmark",
+    emoji: "🎯",
+    color: "#8B5CF6",
+    tooltipTitle: "Core Prompts",
+    tooltipWhat: "Questions standardisées utilisées pour le benchmark.",
+    tooltipHow: "16 questions fixes, identiques pour toutes les marques d'un même secteur. Elles permettent de comparer votre marque à vos concurrents de façon fiable.",
+    tooltipTips: "Votre Benchmark Score est calculé uniquement sur ces prompts.",
+  },
+  strategic: {
+    label: "Strategic",
+    badge: "Opportunités",
+    emoji: "🚀",
+    color: "#06B6D4",
+    tooltipTitle: "Strategic Prompts",
+    tooltipWhat: "Questions personnalisées utilisées pour détecter les opportunités business.",
+    tooltipHow: "8 questions adaptées à votre marque, vos offres et vos concurrents. Elles servent à identifier les gains actionnables.",
+    tooltipTips: "Votre Opportunity Score est calculé uniquement sur ces prompts. Ne pas utiliser pour comparer deux entreprises.",
+  },
+} as const;
+
+const PRIO_COLOR: Record<string, string> = { critical: "var(--bad)", high: "var(--warn)", medium: "var(--accent)", low: "var(--muted)" };
+const PRIO_LABEL: Record<string, string> = { critical: "Critique", high: "Haute", medium: "Moyenne", low: "Faible" };
+const DIFF_COLOR: Record<string, string> = { easy: "var(--good)", medium: "var(--warn)", hard: "var(--bad)" };
+const DIFF_LABEL: Record<string, string> = { easy: "Facile", medium: "Moyen", hard: "Difficile" };
+function bvColor(v: number) { return v >= 80 ? "var(--good)" : v >= 60 ? "var(--warn)" : "var(--muted)"; }
+
 /* ─── component ─────────────────────────────────────────── */
 
 export default function BrandDetailPage({ params }: PageProps) {
@@ -184,6 +238,25 @@ export default function BrandDetailPage({ params }: PageProps) {
   const [subscription, setSubscription] = useState<BillingSubscription | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
 
+  // Reports state
+  const [reportList, setReportList] = useState<BrandReport[]>([]);
+  const [reportGenerating, setReportGenerating] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+
+  // Prompt Strategy — group prompts by scope AND category (two-level)
+  const grouped = useMemo(() => {
+    const g: Record<string, Record<string, Prompt[]>> = {
+      core:     { discovery: [], comparison: [], reputation: [], authority: [] },
+      strategic:{ discovery: [], comparison: [], reputation: [], authority: [] },
+    };
+    for (const p of prompts) {
+      const scope = p.prompt_scope === "core" ? "core" : "strategic";
+      const cat = p.prompt_category ?? (p.is_brand_mentioned ? "reputation" : "discovery");
+      if (cat in g[scope]) g[scope][cat].push(p); else g[scope].discovery.push(p);
+    }
+    return g;
+  }, [prompts]);
+
   // Sync surveillance state when brand loads/updates
   useEffect(() => {
     if (!brand) return;
@@ -223,7 +296,7 @@ export default function BrandDetailPage({ params }: PageProps) {
 
   const load = useCallback(async () => {
     try {
-      const [b, c, p, r, s, pr, radar, snaps] = await Promise.all([
+      const [b, c, p, r, s, pr, radar, snaps, rpts] = await Promise.all([
         apiFetch<Brand>(`/brands/${id}`),
         apiFetch<Competitor[]>(`/brands/${id}/competitors`),
         apiFetch<Prompt[]>(`/brands/${id}/prompts`),
@@ -232,11 +305,13 @@ export default function BrandDetailPage({ params }: PageProps) {
         apiFetch<ProviderStatus[]>(`/providers`),
         apiFetch<RadarData>(`/brands/${id}/scores/radar?days=30`).catch(() => null),
         apiFetch<Snapshot[]>(`/brands/${id}/scores/snapshots`).catch(() => []),
+        apiFetch<BrandReport[]>(`/brands/${id}/reports`).catch(() => []),
       ]);
       setBrand(b); setCompetitors(c); setPrompts(p);
       setRuns(r); setScores(s); setProviders(pr);
       setRadarData(radar);
       setSnapshots(snaps);
+      setReportList(rpts);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -338,6 +413,22 @@ export default function BrandDetailPage({ params }: PageProps) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function generateReport() {
+    setReportGenerating(true);
+    setReportError(null);
+    try {
+      await apiFetch(`/brands/${id}/reports/generate`, {
+        method: "POST",
+        body: JSON.stringify({ period_days: 30 }),
+      });
+      load();
+    } catch (e) {
+      setReportError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setReportGenerating(false);
     }
   }
 
@@ -899,186 +990,270 @@ export default function BrandDetailPage({ params }: PageProps) {
         </div>
       )}
 
-      {/* ── Prompts surveillés ── */}
-      <div className="card">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="label">Questions surveillées</div>
-            <p className="text-sm text-muted">
-              {prompts.filter((p) => p.enabled).length} question{prompts.filter((p) => p.enabled).length !== 1 ? "s" : ""} active{prompts.filter((p) => p.enabled).length !== 1 ? "s" : ""}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              className="input h-8 w-40 text-xs"
-              placeholder="📍 Ville ou région"
-              value={generateLocation}
-              onChange={(e) => handleLocationChange(e.target.value)}
-              title="Ajoute une ville ou région pour générer des questions géolocalisées (ex : Lyon, Bretagne)"
-              disabled={generating}
-            />
-            <button
-              onClick={generatePrompts}
-              className="btn-ghost text-xs border border-border"
-              disabled={generating || (subscription?.limits.auto_generate_prompts === false)}
-              title={
-                subscription?.limits.auto_generate_prompts === false
-                  ? "La génération automatique de questions n'est pas disponible sur votre plan gratuit"
-                  : brand.domain
-                  ? `Analyse ${brand.domain} pour générer des questions spécifiques à votre activité${generateLocation ? ` (région : ${generateLocation})` : ""}`
-                  : `Génère des questions pour la catégorie "${brand.category || "générique"}"${generateLocation ? ` (région : ${generateLocation})` : ""}`
-              }
-            >
-              {generating ? (
-                <>
-                  <span className="mr-1.5 inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  {brand.domain ? "Analyse du site…" : "Génération…"}
-                </>
-              ) : (
-                brand.domain ? "🌐 Générer depuis mon site" : "✨ Générer automatiquement"
-              )}
-            </button>
-            <button onClick={triggerRuns} className="btn-dark text-xs" disabled={running || prompts.length === 0 || enabledProviders.length === 0}>
-              Lancer analyse
-            </button>
-          </div>
-        </div>
+      {/* ── Prompt Strategy Engine ── */}
+      <div className="card space-y-5">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <div className="label">Portfolio de questions stratégiques</div>
+                <p className="mt-0.5 text-xs text-muted max-w-xl">
+                  Les prompts sont organisés selon deux scopes — <strong className="text-text">Core (Benchmark)</strong> pour la comparaison inter-marques et <strong className="text-text">Strategic (Opportunités)</strong> pour les recommandations business.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  className="input h-8 w-36 text-xs"
+                  placeholder="📍 Ville ou région"
+                  value={generateLocation}
+                  onChange={(e) => handleLocationChange(e.target.value)}
+                  title="Ajoute une ville pour des questions géolocalisées (ex : Lyon)"
+                  disabled={generating}
+                />
+                <button
+                  onClick={generatePrompts}
+                  className="btn-ghost text-xs border border-border"
+                  disabled={generating || (subscription?.limits.auto_generate_prompts === false)}
+                  title={subscription?.limits.auto_generate_prompts === false ? "Non disponible sur le plan gratuit" : "Générer un portfolio de 24 questions (16 Core + 8 Strategic)"}
+                >
+                  {generating ? (
+                    <><span className="mr-1.5 inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />{brand.domain ? "Analyse…" : "Génération…"}</>
+                  ) : (
+                    brand.domain ? "🌐 Générer depuis mon site" : "✨ Générer le portfolio"
+                  )}
+                </button>
+                <button onClick={triggerRuns} className="btn-dark text-xs" disabled={running || prompts.length === 0 || enabledProviders.length === 0}>
+                  Lancer analyse
+                </button>
+              </div>
+            </div>
 
-        {/* Add prompt */}
-        <form onSubmit={addPrompt} className="mt-4 flex gap-2">
-          <input
-            className="input"
-            placeholder="Ex: Quelle est la meilleure banque pour un crédit immobilier ?"
-            value={newPromptText}
-            onChange={(e) => setNewPromptText(e.target.value)}
-          />
-          <button type="submit" className="btn-primary flex-shrink-0">+ Ajouter</button>
-        </form>
-
-        {prompts.length > 0 && (
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="py-2 text-left text-xs uppercase text-muted font-medium">Question</th>
-                  <th className="px-4 py-2 text-center text-xs uppercase text-muted font-medium">Position moy.</th>
-                  <th className="px-4 py-2 text-center text-xs uppercase text-muted font-medium">IA testées</th>
-                  <th className="px-4 py-2 text-center text-xs uppercase text-muted font-medium">Image</th>
-                  <th className="px-4 py-2 text-center text-xs uppercase text-muted font-medium">Recherche web</th>
-                  <th className="py-2" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {prompts.map((p) => {
-                  const promptRuns = runs.filter((r) => r.prompt_id === p.id && r.status === "done");
-                  const ranks = promptRuns.flatMap((r) =>
-                    r.mentions.filter((m) => m.is_target_brand && m.rank_position != null).map((m) => m.rank_position!)
-                  );
-                  const avgRank = ranks.length ? (ranks.reduce((a, b) => a + b, 0) / ranks.length).toFixed(1) : null;
-                  const sentiments = promptRuns.flatMap((r) => r.mentions.filter((m) => m.is_target_brand).map((m) => m.sentiment));
-                  const sentimentSummary = sentiments.length
-                    ? sentiments.includes("negative") ? "Négatif" : sentiments.includes("positive") ? "Positif" : "Neutre"
-                    : "—";
-                  const sentimentColor = sentimentSummary === "Positif" ? "text-good" : sentimentSummary === "Négatif" ? "text-bad" : "text-muted";
-                  const usedProviders = [...new Set(promptRuns.map((r) => r.provider))];
-
+            {/* Scope summary chips */}
+            <div className="rounded-xl border border-border bg-bg p-4">
+              <div className="mb-3 text-xs text-muted">
+                <strong>Pourquoi deux types de prompts ?</strong> Les Core Prompts garantissent une comparaison fiable entre marques du même secteur. Les Strategic Prompts personnalisent l&apos;analyse pour identifier les opportunités business spécifiques à votre marque.
+              </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {(Object.keys(SCOPE_INFO) as Array<keyof typeof SCOPE_INFO>).map((scope) => {
+                  const info = SCOPE_INFO[scope];
+                  const total = Object.values(grouped[scope]).reduce((s, arr) => s + arr.length, 0);
                   return (
-                    <tr key={p.id} className="group">
-                      <td className="py-3 pr-4">
-                        <span className="line-clamp-2 text-text">{p.text}</span>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <span className="num text-lg text-text">
-                          {avgRank ? `#${avgRank}` : <span className="text-muted font-sans text-sm">—</span>}
+                    <div key={scope} className="rounded-lg border border-border px-3 py-2" style={{ borderLeft: `3px solid ${info.color}` }}>
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-xs font-semibold" style={{ color: info.color }}>
+                          {info.emoji} {info.label}
                         </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex justify-center gap-1">
-                          {enabledProviders.map((prov) => (
-                            <div
-                              key={prov.name}
-                              className="flex h-5 w-5 items-center justify-center rounded text-[9px] font-bold text-white"
-                              style={{
-                                background: usedProviders.includes(prov.name)
-                                  ? prov.name === "anthropic" ? "#CC785C" : "#10A37F"
-                                  : "var(--border)",
-                                color: usedProviders.includes(prov.name) ? "white" : "var(--muted)",
-                              }}
-                              title={prov.name}
-                            >
-                              {prov.name[0].toUpperCase()}
-                            </div>
-                          ))}
-                        </div>
-                      </td>
-                      <td className={`px-4 py-3 text-center text-sm ${sentimentColor}`}>
-                        {sentimentSummary}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <button
-                          onClick={() => toggleWebSearch(p.id, p.use_web_search)}
-                          disabled={!!(subscription && !subscription.is_trial && subscription.effective_plan === "free")}
-                          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                            subscription && !subscription.is_trial && subscription.effective_plan === "free" ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
-                          }`}
-                          style={{ background: p.use_web_search ? "var(--accent)" : "rgba(0,0,0,0.18)" }}
-                          title={
-                            subscription && !subscription.is_trial && subscription.effective_plan === "free"
-                              ? "Réservé aux plans Pro et Agence"
-                              : p.use_web_search
-                              ? "Recherche web activée (Claude ira chercher des infos en ligne)"
-                              : "Recherche web désactivée"
-                          }
-                        >
-                          <span
-                            className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform ${
-                              p.use_web_search ? "translate-x-4" : "translate-x-1"
-                            }`}
-                          />
-                        </button>
-                      </td>
-                      <td className="py-3 text-right">
-                        <button
-                          onClick={() => deletePrompt(p.id)}
-                          className="text-[11px] text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-bad"
-                        >
-                          Supprimer
-                        </button>
-                      </td>
-                    </tr>
+                        <span className="num text-base font-bold" style={{ color: info.color }}>{total}</span>
+                      </div>
+                      <div className="mt-0.5 text-[10px] font-medium text-text">{info.badge}</div>
+                      <div className="mt-0.5 text-[10px] text-muted">{scope === "core" ? "16 prompts fixes" : "8 prompts personalisés"}</div>
+                      <InfoTooltip
+                        title={info.tooltipTitle}
+                        what={info.tooltipWhat}
+                        how={info.tooltipHow}
+                        tips={info.tooltipTips}
+                      />
+                    </div>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
-        )}
+              </div>
+            </div>
 
-        {prompts.length === 0 && (
-          <div className="mt-4 rounded-xl border border-border bg-bg p-4">
-            <p className="text-sm text-muted">
-              Ajoutez manuellement des questions, ou cliquez sur{" "}
-              <strong className="text-text">
-                {brand.domain ? "🌐 Générer depuis mon site" : "✨ Générer automatiquement"}
-              </strong>.
-            </p>
-            {brand.domain ? (
-              <p className="mt-1 text-xs text-muted">
-                ✨ Le site <strong className="text-text">{brand.domain}</strong> sera analysé
-                pour créer des questions adaptées à votre activité réelle.{" "}
-                {generateLocation
-                  ? <>Les questions seront ancrées sur <strong className="text-text">{generateLocation}</strong>.</>
-                  : <>Renseignez une ville ou région pour des questions géolocalisées.</>
-                }
-              </p>
-            ) : (
-              <p className="mt-1 text-xs text-muted">
-                💡 Ajoutez un domaine pour que l&apos;IA génère des questions personnalisées depuis votre site.
-                Renseignez aussi une <strong className="text-text">ville ou région</strong> pour
-                que les questions soient géolocalisées — indispensable si vous avez une couverture locale.
-              </p>
+            {/* Add prompt form */}
+            <form onSubmit={addPrompt} className="flex gap-2">
+              <input
+                className="input text-sm"
+                placeholder="Ex: Quelle est la meilleure banque pour un dirigeant ?"
+                value={newPromptText}
+                onChange={(e) => setNewPromptText(e.target.value)}
+              />
+              <button type="submit" className="btn-primary flex-shrink-0 text-sm">+ Ajouter</button>
+            </form>
+
+            {/* Empty state */}
+            {prompts.length === 0 && (
+              <div className="rounded-xl border border-border bg-bg px-4 py-4">
+                <p className="text-sm text-muted">
+                  Aucune question.{" "}
+                  <strong className="text-text">{brand.domain ? "🌐 Générez depuis votre site" : "✨ Générez le portfolio automatiquement"}</strong> pour créer un portefeuille de 24 questions stratégiques.
+                </p>
+                {!brand.domain && (
+                  <p className="mt-1 text-xs text-muted">💡 Ajoutez un domaine web à votre marque pour une génération personnalisée basée sur votre activité réelle.</p>
+                )}
+              </div>
             )}
-          </div>
-        )}
+
+            {/* Two-level scope → category rendering */}
+            {prompts.length > 0 && (["core", "strategic"] as Array<"core" | "strategic">).map((scope) => {
+              const scopeInfo = SCOPE_INFO[scope];
+              const scopeTotal = Object.values(grouped[scope]).reduce((s, arr) => s + arr.length, 0);
+              if (scopeTotal === 0) return null;
+              return (
+                <div key={scope} className="space-y-4">
+                  {/* Scope section header */}
+                  <div className="rounded-lg border border-border px-4 py-3" style={{ borderLeft: `4px solid ${scopeInfo.color}` }}>
+                    <div className="flex items-center gap-2">
+                      <span className="text-base font-bold" style={{ color: scopeInfo.color }}>
+                        {scopeInfo.emoji} {scopeInfo.label}
+                      </span>
+                      <span
+                        className="rounded px-2 py-0.5 text-[10px] font-bold uppercase"
+                        style={{ background: `${scopeInfo.color}18`, color: scopeInfo.color }}
+                      >
+                        {scopeInfo.badge}
+                      </span>
+                      <span className="num text-base font-bold text-text">{scopeTotal}</span>
+                      <InfoTooltip
+                        title={scopeInfo.tooltipTitle}
+                        what={scopeInfo.tooltipWhat}
+                        how={scopeInfo.tooltipHow}
+                        tips={scopeInfo.tooltipTips}
+                      />
+                    </div>
+                    <p className="mt-1 text-xs text-muted">
+                      {scope === "core"
+                        ? "16 questions standardisées, identiques pour toutes les marques du même secteur. Score de benchmark."
+                        : "8 questions personnalisées selon votre marque et vos concurrents. Score d'opportunité."}
+                    </p>
+                  </div>
+
+                  {/* Category groups within this scope */}
+                  {STRATEGY_CATS.map((cat) => {
+                    const catPrompts = grouped[scope][cat.key] ?? [];
+                    if (catPrompts.length === 0) return null;
+                    return (
+                      <div key={`${scope}-${cat.key}`} className="space-y-2">
+                        {/* Category header */}
+                        <div className="flex items-center gap-2 border-b border-border pb-2">
+                          <span className="text-sm font-semibold text-text">{cat.emoji} {cat.title}</span>
+                          <span
+                            className="flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white"
+                            style={{ background: cat.color }}
+                          >
+                            {catPrompts.length}
+                          </span>
+                          <InfoTooltip title={cat.title} what={cat.what} how={cat.how} tips={cat.tips} />
+                          <span className="text-[11px] text-muted">— {cat.desc}</span>
+                        </div>
+
+                        {/* Prompt cards */}
+                        <div className="space-y-2">
+                          {catPrompts.map((p) => {
+                            const promptRuns = runs.filter((r) => r.prompt_id === p.id && r.status === "done");
+                            const ranks = promptRuns.flatMap((r) => r.mentions.filter((m) => m.is_target_brand && m.rank_position != null).map((m) => m.rank_position!));
+                            const avgRank = ranks.length ? (ranks.reduce((a, b) => a + b, 0) / ranks.length).toFixed(1) : null;
+                            const sentiments = promptRuns.flatMap((r) => r.mentions.filter((m) => m.is_target_brand).map((m) => m.sentiment));
+                            const sentimentSummary = sentiments.length
+                              ? sentiments.includes("negative") ? "Négatif" : sentiments.includes("positive") ? "Positif" : "Neutre"
+                              : null;
+                            const sentimentColor = sentimentSummary === "Positif" ? "var(--good)" : sentimentSummary === "Négatif" ? "var(--bad)" : "var(--muted)";
+                            const usedProviders = [...new Set(promptRuns.map((r) => r.provider))];
+
+                            return (
+                              <div
+                                key={p.id}
+                                className="group rounded-xl border border-border px-4 py-3 hover:border-accent/40 transition-colors"
+                              >
+                                <div className="flex items-start gap-3">
+                                  <div className="min-w-0 flex-1 space-y-2">
+                                    {/* Text */}
+                                    <p className="text-sm text-text leading-relaxed">{p.text}</p>
+
+                                    {/* Metadata row */}
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      {/* Scope badge */}
+                                      <span
+                                        className="rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide"
+                                        style={{ background: `${scopeInfo.color}18`, color: scopeInfo.color }}
+                                      >
+                                        {scopeInfo.emoji} {scopeInfo.label}
+                                      </span>
+                                      {/* Priority */}
+                                      {p.priority_level && (
+                                        <span
+                                          className="rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide"
+                                          style={{ background: `${PRIO_COLOR[p.priority_level]}18`, color: PRIO_COLOR[p.priority_level] }}
+                                        >
+                                          ⚡ {PRIO_LABEL[p.priority_level] ?? p.priority_level}
+                                        </span>
+                                      )}
+                                      {/* Difficulty */}
+                                      {p.difficulty_level && (
+                                        <span
+                                          className="rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide"
+                                          style={{ background: `${DIFF_COLOR[p.difficulty_level]}18`, color: DIFF_COLOR[p.difficulty_level] }}
+                                        >
+                                          🎯 {DIFF_LABEL[p.difficulty_level] ?? p.difficulty_level}
+                                        </span>
+                                      )}
+                                      {/* Business value */}
+                                      {p.business_value_score != null && (
+                                        <span className="text-[10px] font-semibold" style={{ color: bvColor(p.business_value_score) }}>
+                                          💼 {Math.round(p.business_value_score)}
+                                        </span>
+                                      )}
+                                                              </div>
+
+                                    {/* Run stats row */}
+                                    {promptRuns.length > 0 && (
+                                      <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted border-t border-border pt-2">
+                                        {avgRank && <span className="num font-semibold text-text">#{avgRank} moy.</span>}
+                                        {sentimentSummary && (
+                                          <span style={{ color: sentimentColor }}>{sentimentSummary}</span>
+                                        )}
+                                        <div className="flex gap-1">
+                                          {enabledProviders.map((prov) => (
+                                            <span
+                                              key={prov.name}
+                                              className="flex h-4 w-4 items-center justify-center rounded text-[8px] font-bold"
+                                              style={{
+                                                background: usedProviders.includes(prov.name)
+                                                  ? prov.name === "anthropic" ? "#CC785C" : "#10A37F"
+                                                  : "var(--border)",
+                                                color: usedProviders.includes(prov.name) ? "white" : "var(--muted)",
+                                              }}
+                                              title={prov.name}
+                                            >
+                                              {prov.name[0].toUpperCase()}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Right actions */}
+                                  <div className="flex flex-shrink-0 flex-col items-end gap-2">
+                                    {/* Web search toggle */}
+                                    <button
+                                      onClick={() => toggleWebSearch(p.id, p.use_web_search)}
+                                      disabled={!!(subscription && !subscription.is_trial && subscription.effective_plan === "free")}
+                                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                                        subscription && !subscription.is_trial && subscription.effective_plan === "free" ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
+                                      }`}
+                                      style={{ background: p.use_web_search ? "var(--accent)" : "rgba(0,0,0,0.18)" }}
+                                      title={p.use_web_search ? "Recherche web activée" : "Activer la recherche web"}
+                                    >
+                                      <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform ${p.use_web_search ? "translate-x-4" : "translate-x-1"}`} />
+                                    </button>
+                                    {/* Delete */}
+                                    <button
+                                      onClick={() => deletePrompt(p.id)}
+                                      className="text-[10px] text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-bad"
+                                    >
+                                      Supprimer
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
       </div>
 
       {/* ── Concurrents ── */}
@@ -1128,6 +1303,148 @@ export default function BrandDetailPage({ params }: PageProps) {
           <TrendChart snapshots={snapshots} />
         </div>
       )}
+
+      {/* ── Rapports PDF ── */}
+      <div className="card">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="label">Rapports PDF</div>
+            <p className="mt-0.5 text-sm text-muted">
+              Rapport stratégique complet — visibilité, autorité, concurrents, opportunités et plan d&apos;action
+            </p>
+          </div>
+          <button
+            onClick={generateReport}
+            disabled={reportGenerating}
+            className="btn-primary flex-shrink-0 flex items-center gap-1.5"
+          >
+            {reportGenerating ? (
+              <>
+                <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                Génération en cours…
+              </>
+            ) : (
+              "Générer le rapport PDF"
+            )}
+          </button>
+        </div>
+
+        {reportError && (
+          <div className="mt-3 rounded-lg border px-3 py-2 text-xs" style={{ color: "var(--bad)", background: "rgba(220,38,38,0.06)", borderColor: "rgba(220,38,38,0.2)" }}>
+            {reportError}
+          </div>
+        )}
+
+        {reportList.length === 0 && !reportGenerating ? (
+          <div className="mt-4 rounded-xl border border-border bg-bg p-4 text-center">
+            <div className="mb-2 text-2xl">📄</div>
+            <p className="text-sm text-muted">
+              Aucun rapport généré. Cliquez sur{" "}
+              <strong className="text-text">Générer le rapport PDF</strong> pour créer
+              un rapport stratégique complet sur les 30 derniers jours.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="py-2 text-left text-xs uppercase text-muted font-medium">Rapport</th>
+                  <th className="px-4 py-2 text-left text-xs uppercase text-muted font-medium">Période</th>
+                  <th className="px-4 py-2 text-center text-xs uppercase text-muted font-medium">Statut</th>
+                  <th className="py-2 text-right text-xs uppercase text-muted font-medium">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {reportList.map((report) => {
+                  const periodStart = new Date(report.period_start).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
+                  const periodEnd = new Date(report.period_end).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
+                  const createdAt = new Date(report.created_at).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+                  const isActive = report.status === "pending" || report.status === "generating";
+
+                  return (
+                    <tr key={report.id}>
+                      <td className="py-3">
+                        <div className="text-sm font-medium text-text">{report.title}</div>
+                        <div className="text-xs text-muted">Créé le {createdAt}</div>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-muted">
+                        {periodStart} – {periodEnd}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span
+                          className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
+                          style={{
+                            background:
+                              report.status === "done"
+                                ? "rgba(16,185,129,0.12)"
+                                : report.status === "failed"
+                                ? "rgba(239,68,68,0.12)"
+                                : "rgba(245,158,11,0.12)",
+                            color:
+                              report.status === "done"
+                                ? "var(--good)"
+                                : report.status === "failed"
+                                ? "var(--bad)"
+                                : "var(--warn)",
+                          }}
+                        >
+                          {isActive && (
+                            <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
+                          )}
+                          {report.status === "pending"
+                            ? "En attente"
+                            : report.status === "generating"
+                            ? "Génération…"
+                            : report.status === "done"
+                            ? "Prêt"
+                            : "Erreur"}
+                        </span>
+                        {report.status === "failed" && report.error_message && (
+                          <div className="mt-1 text-[10px] text-bad max-w-[160px] truncate" title={report.error_message}>
+                            {report.error_message.slice(0, 50)}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-3 text-right">
+                        {report.status === "done" ? (
+                          <button
+                            onClick={() => {
+                              const token = getToken();
+                              const url = `${API_URL}/brands/${id}/reports/${report.id}/download`;
+                              // Open in a new tab with auth token via fetch
+                              fetch(url, {
+                                headers: token ? { Authorization: `Bearer ${token}` } : {},
+                              })
+                                .then((res) => res.blob())
+                                .then((blob) => {
+                                  const objUrl = URL.createObjectURL(blob);
+                                  const a = document.createElement("a");
+                                  a.href = objUrl;
+                                  a.download = `rapport-${brand.name.toLowerCase().replace(/\s+/g, "-")}.pdf`;
+                                  a.click();
+                                  URL.revokeObjectURL(objUrl);
+                                })
+                                .catch(() => {
+                                  setReportError("Erreur lors du téléchargement du PDF.");
+                                });
+                            }}
+                            className="btn-ghost text-xs border border-border"
+                          >
+                            Télécharger
+                          </button>
+                        ) : isActive ? (
+                          <span className="text-xs text-muted">—</span>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {/* ── Paramètres de surveillance ── */}
       <div className="card space-y-6">
